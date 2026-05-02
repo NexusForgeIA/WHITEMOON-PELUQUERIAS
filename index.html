@@ -3,185 +3,531 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WhiteMoon — Chatbot IA para Peluquerías</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<title>Belleza Ejemplo — Peluquería y Estética en Madrid</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0a0a12;--card:#111119;--border:#1e1e2e;--purple:#7c3aed;--purple-light:rgba(124,58,237,.1);--purple-mid:rgba(124,58,237,.2);--green:#22c55e;--text:#e0e0e0;--muted:#888;--white:#fff}
-body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px;position:relative}
-body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 30% 40%,rgba(124,58,237,.06) 0%,transparent 50%),radial-gradient(circle at 70% 60%,rgba(6,182,212,.04) 0%,transparent 50%);pointer-events:none}
-.header{text-align:center;margin-bottom:30px;position:relative;z-index:1}
-.logo{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px}
-.logo-text{font-size:1.6rem;font-weight:800;color:var(--white);letter-spacing:-.02em}.logo-text span{color:var(--purple)}
-.header p{color:var(--muted);font-size:.88rem;font-weight:300}
-.badge{display:inline-flex;align-items:center;gap:6px;background:var(--purple-light);border:1px solid var(--purple-mid);color:var(--purple);padding:5px 14px;border-radius:20px;font-size:.7rem;font-weight:600;margin-top:10px;letter-spacing:.03em}
-.badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.chat-container{width:100%;max-width:420px;background:var(--card);border:1px solid var(--border);border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4);position:relative;z-index:1;display:flex;flex-direction:column}
-.chat-head{background:linear-gradient(135deg,#e91e8c,#7c3aed);padding:18px;color:var(--white);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+:root{
+  --bg:#fdfaf7;--card:#fff;--text:#1a1a2e;--muted:#6b6b7e;--soft:#f4ece4;--line:#ece4dc;
+  --pink:#e91e8c;--purple:#7c3aed;--nude:#d4a574;--green:#22c55e;
+  --grad:linear-gradient(135deg,#e91e8c,#7c3aed);
+}
+html,body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);line-height:1.55;-webkit-font-smoothing:antialiased}
+
+/* ============ SITE ============ */
+.site-header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.nav{max-width:1180px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.15rem;letter-spacing:-.01em}
+.brand-icon{width:38px;height:38px;border-radius:12px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:1.2rem;box-shadow:0 4px 14px rgba(233,30,140,.25)}
+.brand b{color:var(--pink)}
+.nav-links{display:flex;gap:28px;align-items:center}
+.nav-links a{color:var(--text);text-decoration:none;font-weight:500;font-size:.92rem;transition:color .2s}
+.nav-links a:hover{color:var(--pink)}
+.nav-cta{background:var(--grad);color:#fff;padding:10px 20px;border-radius:24px;font-weight:600;font-size:.88rem;border:none;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(233,30,140,.3);transition:transform .2s}
+.nav-cta:hover{transform:translateY(-1px)}
+
+.hero{max-width:1180px;margin:0 auto;padding:80px 24px 60px;text-align:center;position:relative}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 20% 30%,rgba(233,30,140,.08),transparent 50%),radial-gradient(circle at 80% 70%,rgba(124,58,237,.06),transparent 50%);pointer-events:none;z-index:-1}
+.hero-eyebrow{display:inline-block;background:rgba(233,30,140,.08);color:var(--pink);padding:6px 16px;border-radius:20px;font-size:.78rem;font-weight:600;margin-bottom:20px;letter-spacing:.04em;text-transform:uppercase}
+.hero h1{font-size:3.4rem;font-weight:800;letter-spacing:-.025em;line-height:1.1;margin-bottom:20px;background:linear-gradient(135deg,#1a1a2e 0%,#7c3aed 60%,#e91e8c 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{max-width:640px;margin:0 auto 32px;color:var(--muted);font-size:1.1rem;font-weight:300}
+.hero-cta{background:var(--grad);color:#fff;padding:16px 36px;border-radius:30px;font-weight:600;font-size:1rem;border:none;cursor:pointer;font-family:inherit;box-shadow:0 10px 30px rgba(233,30,140,.35);transition:transform .2s}
+.hero-cta:hover{transform:translateY(-2px)}
+
+.stats{max-width:1180px;margin:0 auto;padding:0 24px 80px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:32px 24px;text-align:center;transition:transform .25s,box-shadow .25s}
+.stat:hover{transform:translateY(-4px);box-shadow:0 14px 40px rgba(124,58,237,.08)}
+.stat-num{font-size:2.6rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;letter-spacing:-.02em}
+.stat-label{margin-top:8px;color:var(--muted);font-size:.92rem;font-weight:500}
+
+.section{max-width:1180px;margin:0 auto;padding:60px 24px}
+.section-head{text-align:center;margin-bottom:48px}
+.section-head h2{font-size:2.3rem;font-weight:800;letter-spacing:-.02em;margin-bottom:12px}
+.section-head p{color:var(--muted);max-width:560px;margin:0 auto}
+
+.services{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.service{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px 22px;transition:transform .25s,box-shadow .25s,border-color .25s}
+.service:hover{transform:translateY(-4px);box-shadow:0 14px 40px rgba(233,30,140,.08);border-color:rgba(233,30,140,.2)}
+.service-icon{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,rgba(233,30,140,.12),rgba(124,58,237,.12));display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin-bottom:18px}
+.service h3{font-size:1.1rem;font-weight:700;margin-bottom:8px}
+.service p{color:var(--muted);font-size:.88rem}
+
+.team{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.member{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:32px 24px;text-align:center;transition:transform .25s,box-shadow .25s}
+.member:hover{transform:translateY(-4px);box-shadow:0 14px 40px rgba(124,58,237,.08)}
+.member-avatar{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,rgba(233,30,140,.15),rgba(124,58,237,.15));display:flex;align-items:center;justify-content:center;font-size:3rem;margin:0 auto 16px;border:3px solid #fff;box-shadow:0 8px 24px rgba(124,58,237,.12)}
+.member h4{font-size:1.1rem;font-weight:700;margin-bottom:4px}
+.member span{color:var(--pink);font-size:.86rem;font-weight:500}
+
+.site-footer{background:var(--text);color:#aaa;padding:40px 24px;text-align:center;margin-top:60px}
+.site-footer .brand{justify-content:center;color:#fff;margin-bottom:14px}
+.site-footer p{font-size:.88rem;margin-bottom:6px}
+.site-footer small{color:#666;font-size:.78rem}
+
+/* ============ WIDGET ============ */
+.fab{position:fixed;bottom:24px;right:24px;width:64px;height:64px;border-radius:50%;background:var(--grad);border:none;cursor:pointer;box-shadow:0 10px 32px rgba(233,30,140,.45);display:flex;align-items:center;justify-content:center;font-size:1.7rem;z-index:998;transition:transform .2s;animation:fabPulse 2.4s infinite}
+.fab:hover{transform:scale(1.06)}
+@keyframes fabPulse{0%,100%{box-shadow:0 10px 32px rgba(233,30,140,.45),0 0 0 0 rgba(233,30,140,.5)}50%{box-shadow:0 10px 32px rgba(233,30,140,.45),0 0 0 16px rgba(233,30,140,0)}}
+
+.teaser{position:fixed;bottom:104px;right:24px;background:#fff;color:var(--text);padding:12px 40px 12px 18px;border-radius:18px 18px 4px 18px;box-shadow:0 12px 32px rgba(0,0,0,.14);font-size:.86rem;font-weight:500;max-width:260px;z-index:997;animation:teaserIn .4s ease-out;border:1px solid var(--line)}
+.teaser-close{position:absolute;top:6px;right:8px;width:22px;height:22px;border-radius:50%;background:var(--soft);border:none;cursor:pointer;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.teaser-close:hover{background:var(--line)}
+@keyframes teaserIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.teaser.hide{display:none}
+
+.chat-widget{position:fixed;bottom:24px;right:24px;width:380px;height:600px;max-height:calc(100vh - 48px);background:#0d0d18;border-radius:20px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.32);z-index:999;display:none;flex-direction:column;animation:slideUp .35s cubic-bezier(.2,.8,.3,1)}
+.chat-widget.open{display:flex}
+@keyframes slideUp{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
+.chat-head{background:var(--grad);padding:16px 18px;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
 .chat-head-info{display:flex;align-items:center;gap:12px}
-.chat-head-name{font-weight:700;font-size:.95rem}.chat-head-sub{font-size:.7rem;opacity:.75;display:flex;align-items:center;gap:4px}
-.chat-head-sub::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green)}
-.chat-msgs{flex:1;overflow-y:auto;padding:18px;background:#0d0d18;scroll-behavior:smooth;min-height:300px;max-height:55vh}
-.chat-msgs::-webkit-scrollbar{width:4px}.chat-msgs::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-.msg{max-width:85%;margin-bottom:10px;padding:12px 16px;font-size:.84rem;line-height:1.55;animation:msgIn .3s ease-out;white-space:pre-line}
+.chat-avatar{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:1.4rem;backdrop-filter:blur(8px)}
+.chat-head-name{font-weight:700;font-size:.95rem}
+.chat-head-sub{font-size:.7rem;opacity:.85;display:flex;align-items:center;gap:5px;margin-top:2px}
+.chat-head-sub::before{content:'';width:6px;height:6px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,.3)}
+.chat-close{background:rgba(255,255,255,.16);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:background .2s}
+.chat-close:hover{background:rgba(255,255,255,.28)}
+
+.chat-msgs{flex:1;overflow-y:auto;padding:18px;background:#0d0d18;scroll-behavior:smooth;color:#e0e0e0}
+.chat-msgs::-webkit-scrollbar{width:4px}
+.chat-msgs::-webkit-scrollbar-thumb{background:#1e1e2e;border-radius:4px}
+.msg{max-width:86%;margin-bottom:10px;padding:11px 15px;font-size:.84rem;line-height:1.55;animation:msgIn .3s ease-out;white-space:pre-line;border-radius:16px}
 @keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.msg.bot{background:var(--purple-light);border:1px solid var(--purple-mid);color:var(--text);border-radius:16px 16px 16px 4px}
-.msg.user{background:linear-gradient(135deg,#e91e8c,#7c3aed);color:var(--white);margin-left:auto;border-radius:16px 16px 4px 16px}
+.msg.bot{background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2);color:#e0e0e0;border-radius:16px 16px 16px 4px}
+.msg.user{background:var(--grad);color:#fff;margin-left:auto;border-radius:16px 16px 4px 16px}
 .quick-btns{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.quick-btn{background:rgba(124,58,237,.06);border:1px solid var(--purple-mid);color:var(--purple);border-radius:20px;padding:7px 16px;font-size:.76rem;cursor:pointer;font-family:inherit;font-weight:500;transition:all .2s}
-.quick-btn:hover{background:var(--purple);color:var(--white);transform:translateY(-1px)}
-.cal{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;max-width:290px}
-.cal-title{text-align:center;font-weight:700;font-size:.84rem;color:var(--white);margin-bottom:10px}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}
-.cal-day{font-weight:700;color:var(--muted);font-size:.65rem;padding:4px 0}
-.cal-num{padding:6px 2px;border-radius:8px;font-size:.74rem;cursor:pointer;border:1px solid transparent;transition:all .2s;color:var(--text)}
-.cal-num:hover{background:var(--purple-light);border-color:var(--purple)}.cal-num.sel{background:var(--purple);color:var(--white);border-color:var(--purple)}
-.cal-off{padding:6px 2px;color:#333;font-size:.74rem;border-radius:8px}
-.times{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;max-width:300px}
-.time-btn{padding:6px 13px;border-radius:8px;font-size:.73rem;background:var(--purple-light);color:var(--purple);border:1px solid var(--purple-mid);cursor:pointer;font-family:inherit;transition:all .2s;font-weight:500}
-.time-btn:hover,.time-btn.sel{background:var(--purple);color:var(--white)}
-.chat-input{padding:14px;border-top:1px solid var(--border);display:flex;gap:10px;background:var(--card);flex-shrink:0}
-.chat-input input{flex:1;background:#0d0d18;border:1px solid var(--border);border-radius:22px;padding:12px 18px;font-size:.9rem;color:var(--white);font-family:inherit;outline:none;transition:border .2s;min-width:0}
-.chat-input input:focus{border-color:var(--purple)}.chat-input input::placeholder{color:#555}
-.send-btn{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#e91e8c,#7c3aed);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;box-shadow:0 3px 12px rgba(124,58,237,.3);flex-shrink:0}
-.send-btn:hover{transform:scale(1.05)}.send-btn svg{width:16px;height:16px;stroke:var(--white);fill:none;stroke-width:2}
-.chat-footer{text-align:center;padding:8px;font-size:.6rem;color:#444;background:var(--card);border-top:1px solid rgba(255,255,255,.03)}.chat-footer a{color:#555}
-.wa-confirm{background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.15);border-radius:14px;padding:16px;margin-bottom:10px;text-align:center}
-.wa-confirm .wa-icon{font-size:2rem;margin-bottom:8px}.wa-confirm .wa-title{font-weight:700;color:var(--green);font-size:.88rem;margin-bottom:4px}
-.wa-confirm .wa-text{font-size:.76rem;color:var(--muted);line-height:1.5}
-@media(max-width:480px){body{padding:8px}.header{margin-bottom:10px}.header p{font-size:.76rem}.logo-text{font-size:1.2rem}.badge{font-size:.65rem;padding:4px 10px}.chat-container{border-radius:16px;max-width:100%;flex:1}.chat-msgs{max-height:calc(100vh - 260px);min-height:200px;padding:12px}.chat-head{padding:12px}.chat-head-name{font-size:.86rem}.chat-input{padding:10px}.chat-input input{padding:10px 14px;font-size:.86rem}.msg{font-size:.8rem;padding:10px 12px}.quick-btn{font-size:.72rem;padding:6px 12px}.cal{max-width:100%;padding:10px}.cal-num,.cal-off{padding:5px 1px;font-size:.7rem}.times{max-width:100%}.time-btn{padding:5px 10px;font-size:.7rem}}
+.quick-btn{background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.25);color:#a78bfa;border-radius:20px;padding:7px 14px;font-size:.76rem;cursor:pointer;font-family:inherit;font-weight:500;transition:all .2s}
+.quick-btn:hover{background:var(--purple);color:#fff;transform:translateY(-1px)}
+.quick-btn.primary{background:var(--grad);color:#fff;border:none;font-size:.82rem;padding:9px 18px}
+
+.price-table{background:#15151f;border:1px solid #1e1e2e;border-radius:14px;padding:14px;margin-bottom:10px;font-size:.8rem}
+.price-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1e1e2e}
+.price-row:last-child{border-bottom:none}
+.price-row span:first-child{color:#cfcfe0}
+.price-row span:last-child{color:#22c55e;font-weight:600}
+
+.chat-input{padding:12px;border-top:1px solid #1e1e2e;display:flex;gap:8px;background:#111119;flex-shrink:0}
+.chat-input input{flex:1;background:#0d0d18;border:1px solid #1e1e2e;border-radius:22px;padding:11px 16px;font-size:.88rem;color:#fff;font-family:inherit;outline:none;transition:border .2s;min-width:0}
+.chat-input input:focus{border-color:var(--purple)}
+.chat-input input::placeholder{color:#555}
+.send-btn{width:42px;height:42px;border-radius:50%;background:var(--grad);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 12px rgba(233,30,140,.3);transition:transform .2s}
+.send-btn:hover{transform:scale(1.06)}
+.send-btn svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2}
+.chat-footer{text-align:center;padding:8px;font-size:.6rem;color:#555;background:#111119;border-top:1px solid rgba(255,255,255,.04)}
+.chat-footer a{color:#7c3aed;text-decoration:none}
+
+.wa-confirm{background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:14px;padding:16px;margin-bottom:10px;text-align:center}
+.wa-confirm .wa-icon{font-size:2rem;margin-bottom:6px}
+.wa-confirm .wa-title{font-weight:700;color:#22c55e;font-size:.92rem;margin-bottom:6px}
+.wa-confirm .wa-text{font-size:.78rem;color:#9ba3af;line-height:1.55;margin-bottom:14px}
+.wa-btn{display:inline-block;background:#25d366;color:#fff;text-decoration:none;padding:11px 22px;border-radius:22px;font-size:.86rem;font-weight:600;font-family:inherit;border:none;cursor:pointer;transition:transform .2s;box-shadow:0 4px 14px rgba(37,211,102,.35)}
+.wa-btn:hover{transform:translateY(-1px)}
+
+/* ============ RESPONSIVE ============ */
+@media(max-width:900px){
+  .services{grid-template-columns:repeat(2,1fr)}
+  .team{grid-template-columns:1fr}
+  .hero h1{font-size:2.4rem}
+}
+@media(max-width:640px){
+  .nav{padding:12px 18px;gap:12px}
+  .nav-links{display:none}
+  .hero{padding:48px 18px 40px}
+  .hero h1{font-size:2rem}
+  .hero p{font-size:.96rem}
+  .stats{grid-template-columns:1fr;gap:14px;padding-bottom:40px}
+  .section{padding:40px 18px}
+  .section-head h2{font-size:1.7rem}
+  .services{grid-template-columns:1fr}
+  .fab{width:56px;height:56px;bottom:18px;right:18px;font-size:1.5rem}
+  .teaser{bottom:88px;right:18px;max-width:200px;font-size:.8rem;padding:10px 36px 10px 14px}
+  .chat-widget{width:100vw;height:100vh;max-height:100vh;bottom:0;right:0;border-radius:0}
+}
 </style>
 </head>
 <body>
-<div class="header">
-  <div class="logo">
-    <img src="data:image/jpeg;base64,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" style="height:48px;border-radius:14px">
-    <div class="logo-text">WHITE<span>MOON</span></div>
-  </div>
-  <p>Chatbot IA para Peluquerias</p>
-  <div class="badge">Demo en vivo - Interactua con el chatbot</div>
+
+<!-- ============ SITE ============ -->
+<header class="site-header">
+  <nav class="nav">
+    <div class="brand"><div class="brand-icon">✂️</div>Belleza<b>Ejemplo</b></div>
+    <div class="nav-links">
+      <a href="#servicios">Servicios</a>
+      <a href="#equipo">Equipo</a>
+      <a href="#contacto">Contacto</a>
+    </div>
+    <button class="nav-cta" onclick="toggleChat()">Reservar cita</button>
+  </nav>
+</header>
+
+<section class="hero">
+  <div class="hero-eyebrow">✨ Peluquería · Color · Estética</div>
+  <h1>Realza tu belleza<br>con nosotras</h1>
+  <p>Más de 15 años cuidando tu imagen con productos premium, técnicas vanguardistas y un equipo apasionado por la belleza.</p>
+  <button class="hero-cta" onclick="toggleChat()">Pide tu cita ahora</button>
+</section>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num">15+</div><div class="stat-label">Años de experiencia</div></div>
+  <div class="stat"><div class="stat-num">5.000+</div><div class="stat-label">Clientas satisfechas</div></div>
+  <div class="stat"><div class="stat-num">4.9/5</div><div class="stat-label">Valoración media</div></div>
 </div>
-<div class="chat-container">
+
+<section class="section" id="servicios">
+  <div class="section-head">
+    <h2>Nuestros servicios</h2>
+    <p>Tratamientos pensados para realzar lo mejor de ti, con productos premium y técnicas actuales.</p>
+  </div>
+  <div class="services">
+    <div class="service"><div class="service-icon">✂️</div><h3>Peluquería</h3><p>Corte, lavado y peinado para mujer, hombre y niños.</p></div>
+    <div class="service"><div class="service-icon">🎨</div><h3>Color</h3><p>Tintes, mechas, balayage y cambios de look completos.</p></div>
+    <div class="service"><div class="service-icon">💅</div><h3>Estética</h3><p>Manicura y pedicura clásica o semi-permanente.</p></div>
+    <div class="service"><div class="service-icon">✨</div><h3>Tratamientos</h3><p>Keratina, hidratación profunda y anti-edad capilar.</p></div>
+  </div>
+</section>
+
+<section class="section" id="equipo">
+  <div class="section-head">
+    <h2>Conoce al equipo</h2>
+    <p>Estilistas con años de experiencia y formación continua para darte siempre lo mejor.</p>
+  </div>
+  <div class="team">
+    <div class="member"><div class="member-avatar">👩‍🦰</div><h4>Carla Vega</h4><span>Color y mechas</span></div>
+    <div class="member"><div class="member-avatar">💇‍♀️</div><h4>Sofía Martín</h4><span>Corte y peinado</span></div>
+    <div class="member"><div class="member-avatar">💅</div><h4>Marina Ruiz</h4><span>Estética y manicura</span></div>
+  </div>
+</section>
+
+<footer class="site-footer" id="contacto">
+  <div class="brand"><div class="brand-icon">✂️</div>Belleza<b style="color:#e91e8c">Ejemplo</b></div>
+  <p>Calle Belleza 22 · 28010 Madrid · 911 234 567</p>
+  <small>© 2026 Belleza Ejemplo · Demo creada por WhiteMoon</small>
+</footer>
+
+<!-- ============ WIDGET ============ -->
+<div class="teaser hide" id="teaser">
+  <button class="teaser-close" onclick="dismissTeaser()" aria-label="Cerrar">×</button>
+  <span id="teaserText">¿Quieres reservar? Cita en 30 segundos 💇‍♀️</span>
+</div>
+
+<button class="fab" id="fab" onclick="toggleChat()" aria-label="Abrir chat">💇‍♀️</button>
+
+<div class="chat-widget" id="chatWidget" role="dialog" aria-label="Asistente Belleza">
   <div class="chat-head">
     <div class="chat-head-info">
-      <img src="data:image/jpeg;base64,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" style="width:42px;height:42px;border-radius:12px;object-fit:cover">
+      <div class="chat-avatar">💇‍♀️</div>
       <div>
-        <div class="chat-head-name">Agente IA - Peluqueria</div>
-        <div class="chat-head-sub">En linea - Respuesta inmediata</div>
+        <div class="chat-head-name">Asistente Belleza</div>
+        <div class="chat-head-sub">Belleza Ejemplo · 24/7</div>
       </div>
     </div>
+    <button class="chat-close" onclick="toggleChat()" aria-label="Cerrar chat">✕</button>
   </div>
   <div class="chat-msgs" id="msgs">
-    <div class="msg bot">Hola! Bienvenido/a a nuestra peluqueria.
-
-Soy tu asistente virtual. Que te gustaria hacer?</div>
+    <div class="msg bot">¡Hola! ✨ Soy el asistente virtual de Belleza Ejemplo. Estoy aquí 24/7 para ayudarte. ¿Qué te apetece hoy?</div>
     <div class="quick-btns" id="initBtns">
-      <button class="quick-btn" style="background:linear-gradient(135deg,#e91e8c,#7c3aed);color:#fff;font-size:.82rem;padding:9px 20px;border:none" onclick="pickService(this)">Pedir cita</button>
-      <button class="quick-btn" onclick="pickService(this)">Corte senora</button>
-      <button class="quick-btn" onclick="pickService(this)">Corte caballero</button>
-      <button class="quick-btn" onclick="pickService(this)">Tinte</button>
-      <button class="quick-btn" onclick="pickService(this)">Mechas</button>
-      <button class="quick-btn" onclick="pickService(this)">Peinado</button>
-      <button class="quick-btn" onclick="pickService(this)">Tratamiento capilar</button>
-      <button class="quick-btn" onclick="pickService(this)">Manicura</button>
+      <button class="quick-btn primary" onclick="pickOption(this,'cita')">💇‍♀️ Pedir cita</button>
+      <button class="quick-btn" onclick="pickOption(this,'corte')">✂️ Corte y peinado</button>
+      <button class="quick-btn" onclick="pickOption(this,'color')">🎨 Color y mechas</button>
+      <button class="quick-btn" onclick="pickOption(this,'manicura')">💅 Manicura y pedicura</button>
+      <button class="quick-btn" onclick="pickOption(this,'tratamientos')">✨ Tratamientos</button>
+      <button class="quick-btn" onclick="pickOption(this,'rapida')">⚡ Cita rápida hoy</button>
+      <button class="quick-btn" onclick="pickOption(this,'precios')">💰 Consultar precios</button>
     </div>
   </div>
   <div class="chat-input">
     <input type="text" id="input" placeholder="Escribe tu mensaje..." onkeydown="if(event.key==='Enter')send()">
-    <button class="send-btn" onclick="send()"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+    <button class="send-btn" onclick="send()" aria-label="Enviar"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
   </div>
-  <div class="chat-footer">Powered by <a href="https://whitemoon.es" target="_blank">WhiteMoon</a> - Agencia de IA</div>
+  <div class="chat-footer">Powered by <a href="https://whitemoon.es" target="_blank" rel="noopener">WhiteMoon</a> · Agencia de IA</div>
 </div>
+
 <script>
-var WA_NUMBER='';
-var WEBHOOK_URL='https://whitemoonagency.app.n8n.cloud/webhook/chatbot-peluqueria';
-var state={step:0,service:'',name:'',apellidos:'',tel:'',date:'',time:''};
+var WA_NUMBER='643199580';
+var state={step:0,flow:'',service:'',name:'',apellidos:'',tel:''};
 
-function addMsg(text,type){var c=document.getElementById('msgs');var d=document.createElement('div');d.className='msg '+(type||'bot');d.textContent=text;c.appendChild(d);c.scrollTop=c.scrollHeight}
-function addHtml(html){var c=document.getElementById('msgs');var d=document.createElement('div');d.innerHTML=html;c.appendChild(d);c.scrollTop=c.scrollHeight}
+var PRICES={
+  corte:[
+    ['Corte mujer','desde 25€'],
+    ['Corte hombre','desde 18€'],
+    ['Corte + lavado + peinado','desde 35€'],
+    ['Niños (hasta 12 años)','desde 15€'],
+    ['Peinado para evento','desde 35€']
+  ],
+  color:[
+    ['Tinte completo','desde 45€'],
+    ['Solo raíces','desde 30€'],
+    ['Mechas / balayage','desde 70€'],
+    ['Decoloración completa','desde 90€'],
+    ['Cambio de look completo','desde 120€']
+  ],
+  manicura:[
+    ['Manicura clásica','desde 18€'],
+    ['Manicura semi-permanente','desde 25€'],
+    ['Pedicura clásica','desde 28€'],
+    ['Pedicura semi-permanente','desde 35€'],
+    ['Pack mani + pedi','desde 40€']
+  ],
+  tratamientos:[
+    ['Keratina alisado','desde 90€'],
+    ['Tratamiento hidratación','desde 35€'],
+    ['Mascarilla nutritiva','desde 25€'],
+    ['Tratamiento anti-caída','desde 45€']
+  ],
+  general:[
+    ['Corte mujer','desde 25€'],
+    ['Tinte completo','desde 45€'],
+    ['Mechas / balayage','desde 70€'],
+    ['Manicura semi-permanente','desde 25€'],
+    ['Keratina alisado','desde 90€'],
+    ['Pack mani + pedi','desde 40€']
+  ]
+};
 
-function pickService(el){
-  var text=el.textContent.trim();
-  addMsg(text,'user');
-  document.getElementById('initBtns').remove();
-  if(text==='Pedir cita'){
-    state.step=0.5;
+var SERVICE_LABEL={corte:'Corte y peinado',color:'Color y mechas',manicura:'Manicura y pedicura',tratamientos:'Tratamientos'};
+
+function addMsg(text,type){
+  var c=document.getElementById('msgs');
+  var d=document.createElement('div');
+  d.className='msg '+(type||'bot');
+  d.textContent=text;
+  c.appendChild(d);
+  c.scrollTop=c.scrollHeight;
+}
+function addHtml(html){
+  var c=document.getElementById('msgs');
+  var d=document.createElement('div');
+  d.innerHTML=html;
+  c.appendChild(d);
+  c.scrollTop=c.scrollHeight;
+}
+
+function priceTableHtml(key){
+  var rows=PRICES[key]||[];
+  var h='<div class="price-table">';
+  rows.forEach(function(r){h+='<div class="price-row"><span>'+r[0]+'</span><span>'+r[1]+'</span></div>';});
+  h+='</div>';
+  return h;
+}
+
+function removeBtns(id){var b=document.getElementById(id);if(b)b.remove();}
+
+function pickOption(el,key){
+  addMsg(el.textContent.trim(),'user');
+  removeBtns('initBtns');
+
+  if(key==='cita'){
+    state.flow='cita';state.step=1;
     setTimeout(function(){
-      addMsg('Por supuesto! Que servicio necesitas?');
+      addMsg('¡Genial! ✨ ¿Qué servicio te interesa?');
       setTimeout(function(){
-        addHtml('<div class="quick-btns" id="svcBtns"><button class="quick-btn" onclick="pickTreatment(this)">Corte senora</button><button class="quick-btn" onclick="pickTreatment(this)">Corte caballero</button><button class="quick-btn" onclick="pickTreatment(this)">Tinte</button><button class="quick-btn" onclick="pickTreatment(this)">Mechas</button><button class="quick-btn" onclick="pickTreatment(this)">Peinado</button><button class="quick-btn" onclick="pickTreatment(this)">Tratamiento capilar</button><button class="quick-btn" onclick="pickTreatment(this)">Manicura</button><button class="quick-btn" onclick="pickTreatment(this)">Otro servicio</button></div>');
+        addHtml('<div class="quick-btns" id="svcBtns">'+
+          '<button class="quick-btn" onclick="pickService(this,\'corte\')">✂️ Corte y peinado</button>'+
+          '<button class="quick-btn" onclick="pickService(this,\'color\')">🎨 Color y mechas</button>'+
+          '<button class="quick-btn" onclick="pickService(this,\'manicura\')">💅 Manicura y pedicura</button>'+
+          '<button class="quick-btn" onclick="pickService(this,\'tratamientos\')">✨ Tratamientos</button>'+
+          '<button class="quick-btn" onclick="pickService(this,\'otro\')">Otro servicio</button>'+
+          '</div>');
       },300);
-    },800);
-  } else {
-    state.service=text;state.step=1;
-    setTimeout(function(){addMsg('Genial! Para reservarte una cita de '+state.service+', necesito algunos datos.\n\nCual es tu nombre?')},800);
+    },700);
+    return;
+  }
+
+  if(key==='rapida'){
+    state.flow='rapida';state.step=0;
+    setTimeout(function(){
+      addMsg('⚡ ¡Vamos a buscarte un hueco hoy! ¿Qué necesitas exactamente?');
+      setTimeout(function(){
+        addHtml('<div class="quick-btns" id="rapidBtns">'+
+          '<button class="quick-btn" onclick="pickRapida(this,\'Corte rápido\')">Corte rápido</button>'+
+          '<button class="quick-btn" onclick="pickRapida(this,\'Retoque raíz\')">Retoque raíz</button>'+
+          '<button class="quick-btn" onclick="pickRapida(this,\'Mani exprés\')">Mani exprés</button>'+
+          '<button class="quick-btn" onclick="pickRapida(this,\'Otro\')">Otro</button>'+
+          '</div>');
+      },300);
+    },700);
+    return;
+  }
+
+  if(key==='precios'){
+    setTimeout(function(){
+      addMsg('💰 Estos son nuestros servicios más solicitados:');
+      setTimeout(function(){
+        addHtml(priceTableHtml('general'));
+        setTimeout(function(){
+          addMsg('¿Quieres reservar alguno? Te lo gestionamos al momento ✨');
+          addHtml('<div class="quick-btns" id="postBtns">'+
+            '<button class="quick-btn primary" onclick="pickOption(this,\'cita\')">💇‍♀️ Pedir cita</button>'+
+            '<button class="quick-btn" onclick="pickOption(this,\'rapida\')">⚡ Cita rápida hoy</button>'+
+            '</div>');
+        },500);
+      },400);
+    },600);
+    return;
+  }
+
+  // info de servicio (corte / color / manicura / tratamientos)
+  setTimeout(function(){
+    addMsg('Estos son los precios de '+SERVICE_LABEL[key].toLowerCase()+':');
+    setTimeout(function(){
+      addHtml(priceTableHtml(key));
+      setTimeout(function(){
+        addMsg('¿Te gustaría reservar?');
+        addHtml('<div class="quick-btns" id="postBtns">'+
+          '<button class="quick-btn primary" onclick="startCitaFromService(this,\''+key+'\')">💇‍♀️ Sí, pedir cita</button>'+
+          '<button class="quick-btn" onclick="pickOption(this,\'rapida\')">⚡ Cita rápida hoy</button>'+
+          '</div>');
+      },500);
+    },400);
+  },600);
+}
+
+function startCitaFromService(el,key){
+  addMsg(el.textContent.trim(),'user');
+  removeBtns('postBtns');
+  state.flow='cita';state.service=SERVICE_LABEL[key];state.step=2;
+  setTimeout(function(){addMsg('Perfecto, '+state.service.toLowerCase()+'. Para reservarte la cita necesito unos datos.\n\n¿Cuál es tu nombre?');},700);
+}
+
+function pickService(el,key){
+  var label=key==='otro'?'Otro servicio':SERVICE_LABEL[key];
+  state.service=label;
+  addMsg(el.textContent.trim(),'user');
+  removeBtns('svcBtns');
+  state.step=2;
+  setTimeout(function(){addMsg('Genial, '+label.toLowerCase()+'. Para tu cita necesito unos datos.\n\n¿Cuál es tu nombre?');},700);
+}
+
+function pickRapida(el,sub){
+  state.service='⚡ '+sub;
+  addMsg(el.textContent.trim(),'user');
+  removeBtns('rapidBtns');
+  state.step=10;
+  setTimeout(function(){addMsg('Perfecto. ¿Cuál es tu nombre? (sin apellidos, vamos rápido 😉)');},600);
+}
+
+function isValidPhone(s){return /^[+\d][\d\s\-]{7,}$/.test(s.trim());}
+
+function send(){
+  var inp=document.getElementById('input');
+  var m=inp.value.trim();
+  if(!m)return;
+  inp.value='';
+  addMsg(m,'user');
+
+  // FLUJO CITA NORMAL
+  if(state.flow==='cita'){
+    if(state.step===2){
+      state.name=m;state.step=3;
+      setTimeout(function(){addMsg('Encantada, '+state.name+' ✨ ¿Y tus apellidos?');},700);
+    }
+    else if(state.step===3){
+      state.apellidos=m;state.step=4;
+      setTimeout(function(){addMsg('Perfecto, '+state.name+' '+state.apellidos+'. ¿Me das un teléfono móvil para contactarte?');},700);
+    }
+    else if(state.step===4){
+      if(!isValidPhone(m)){
+        setTimeout(function(){addMsg('Mmm, ese teléfono no parece válido. ¿Puedes escribirlo de nuevo? (ej: 612345678)');},500);
+        return;
+      }
+      state.tel=m;state.step=99;
+      finishCita();
+    }
+    else if(state.step===99){
+      setTimeout(function(){addMsg('Tu solicitud ya está registrada ✨ Te contactaremos en breve para confirmar la fecha y hora. ¡Gracias!');},700);
+    }
+    return;
+  }
+
+  // FLUJO RÁPIDA
+  if(state.flow==='rapida'){
+    if(state.step===10){
+      state.name=m;state.step=11;
+      setTimeout(function(){addMsg('¡Genial '+state.name+'! ¿Tu teléfono móvil?');},600);
+    }
+    else if(state.step===11){
+      if(!isValidPhone(m)){
+        setTimeout(function(){addMsg('Ese teléfono no me cuadra. ¿Puedes escribirlo de nuevo? (ej: 612345678)');},500);
+        return;
+      }
+      state.tel=m;state.step=99;
+      finishRapida();
+    }
+    else if(state.step===99){
+      setTimeout(function(){addMsg('Ya tienes tu solicitud registrada. Te llamamos en menos de 5 minutos 📞');},700);
+    }
+    return;
+  }
+
+  // sin contexto: redirige al menú
+  setTimeout(function(){
+    addMsg('Cuéntame qué necesitas y te ayudo:');
+    addHtml('<div class="quick-btns" id="initBtns">'+
+      '<button class="quick-btn primary" onclick="pickOption(this,\'cita\')">💇‍♀️ Pedir cita</button>'+
+      '<button class="quick-btn" onclick="pickOption(this,\'precios\')">💰 Consultar precios</button>'+
+      '<button class="quick-btn" onclick="pickOption(this,\'rapida\')">⚡ Cita rápida hoy</button>'+
+      '</div>');
+  },500);
+}
+
+function buildWaUrl(prefix){
+  var msg=prefix+'\n\n'+
+    '👤 '+state.name+(state.apellidos?' '+state.apellidos:'')+'\n'+
+    '📱 '+state.tel+'\n'+
+    '💇 Servicio: '+state.service+'\n\n'+
+    '— Enviado desde Chatbot IA WhiteMoon';
+  return 'https://wa.me/34'+WA_NUMBER+'?text='+encodeURIComponent(msg);
+}
+
+function finishCita(){
+  setTimeout(function(){
+    addMsg('¡Perfecto '+state.name+'! ✨ He registrado tu solicitud:\n\n👤 '+state.name+' '+state.apellidos+'\n📱 '+state.tel+'\n💇 Servicio: '+state.service+'\n\nUn momento, preparo el resumen para enviar al salón...');
+    setTimeout(function(){
+      var url=buildWaUrl('💇‍♀️ NUEVA CITA — Belleza Ejemplo');
+      addHtml('<div class="wa-confirm"><div class="wa-icon">✅</div><div class="wa-title">¡Solicitud lista!</div><div class="wa-text">Pulsa el botón para enviarnos los datos por WhatsApp y reservaremos tu cita en breve.</div><a class="wa-btn" href="'+url+'" target="_blank" rel="noopener">📱 Avisar por WhatsApp</a></div>');
+      addMsg('Si necesitas algo más, aquí estoy ✨');
+    },1200);
+  },800);
+}
+
+function finishRapida(){
+  setTimeout(function(){
+    addMsg('Vamos a buscarte un hueco. Te llamamos en 5 minutos para confirmar el primer momento disponible 📞');
+    setTimeout(function(){
+      var url=buildWaUrl('⚡ CITA HOY — Belleza Ejemplo');
+      addHtml('<div class="wa-confirm"><div class="wa-icon">⚡</div><div class="wa-title">¡Solicitud express enviada!</div><div class="wa-text">Avísanos también por WhatsApp y aceleramos la confirmación.</div><a class="wa-btn" href="'+url+'" target="_blank" rel="noopener">📱 Avisar por WhatsApp</a></div>');
+    },1100);
+  },700);
+}
+
+/* ============ WIDGET CONTROLS ============ */
+function toggleChat(){
+  var w=document.getElementById('chatWidget');
+  w.classList.toggle('open');
+  dismissTeaser();
+  if(w.classList.contains('open')){
+    setTimeout(function(){var i=document.getElementById('input');if(i)i.focus();},350);
   }
 }
 
-function pickTreatment(el){
-  state.service=el.textContent.trim();
-  addMsg(el.textContent,'user');
-  var btns=document.getElementById('svcBtns');if(btns)btns.remove();
-  state.step=1;
-  setTimeout(function(){addMsg('Perfecto! Para tu cita de '+state.service+', necesito algunos datos.\n\nCual es tu nombre?')},800);
+function dismissTeaser(){
+  var t=document.getElementById('teaser');
+  if(t)t.classList.add('hide');
+  try{sessionStorage.setItem('wm_teaser_dismissed','1');}catch(e){}
 }
 
-function send(){
-  var inp=document.getElementById('input');var m=inp.value.trim();if(!m)return;inp.value='';
-  addMsg(m,'user');
-  if(state.step===0){state.service=m;state.step=1;setTimeout(function(){addMsg('Perfecto! Para reservarte una cita, necesito algunos datos.\n\nCual es tu nombre?')},800)}
-  else if(state.step===0.5){state.service=m;state.step=1;var btns=document.getElementById('svcBtns');if(btns)btns.remove();setTimeout(function(){addMsg('Perfecto! Para tu cita de '+state.service+', necesito algunos datos.\n\nCual es tu nombre?')},800)}
-  else if(state.step===1){state.name=m;state.step=2;setTimeout(function(){addMsg('Encantada, '+state.name+'! Y tus apellidos?')},800)}
-  else if(state.step===2){state.apellidos=m;state.step=3;setTimeout(function(){addMsg('Perfecto, '+state.name+' '+state.apellidos+'. Me das un telefono movil para contactarte?')},800)}
-  else if(state.step===3){state.tel=m;state.step=4;setTimeout(function(){addMsg('Genial! Elige el dia que prefieras para tu cita:');setTimeout(showCalendar,400)},800)}
-  else if(state.step===99){setTimeout(function(){addMsg('Tu cita ya esta registrada. Te contactaremos para confirmar. Gracias!')},800)}
+function showTeaser(){
+  try{if(sessionStorage.getItem('wm_teaser_dismissed')==='1')return;}catch(e){}
+  var w=document.getElementById('chatWidget');
+  if(w&&w.classList.contains('open'))return;
+  var t=document.getElementById('teaser');
+  var txt=document.getElementById('teaserText');
+  if(window.innerWidth<=640){txt.textContent='¿Quieres reservar? 💇‍♀️';}
+  else{txt.textContent='¿Quieres reservar? Cita en 30 segundos 💇‍♀️';}
+  t.classList.remove('hide');
 }
 
-function showCalendar(){
-  var today=new Date(),mo=today.getMonth(),yr=today.getFullYear();
-  var dim=new Date(yr,mo+1,0).getDate(),fd=new Date(yr,mo,1).getDay();
-  var off=fd===0?6:fd-1;
-  var mn=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  var dn=['L','M','X','J','V','S','D'];
-  var h='<div class="cal"><div class="cal-title">'+mn[mo]+' '+yr+'</div><div class="cal-grid">';
-  dn.forEach(function(d){h+='<div class="cal-day">'+d+'</div>'});
-  for(var i=0;i<off;i++)h+='<div></div>';
-  for(var d=1;d<=dim;d++){var dt=new Date(yr,mo,d),dw=dt.getDay();var past=dt<new Date(today.getFullYear(),today.getMonth(),today.getDate());
-    if(past||dw===0){h+='<div class="cal-off">'+d+'</div>'}
-    else{var ds=d+'/'+(mo+1)+'/'+yr;h+='<div class="cal-num" onclick="pickDate(this,\''+ds+'\')">'+d+'</div>'}}
-  h+='</div></div>';addHtml(h);
-}
-
-function pickDate(el,ds){
-  el.closest('.cal-grid').querySelectorAll('.cal-num').forEach(function(x){x.classList.remove('sel')});
-  el.classList.add('sel');state.date=ds;addMsg(ds,'user');
-  setTimeout(function(){addMsg('Dia '+ds+'. A que hora te viene mejor? La peluqueria confirmara la disponibilidad:');setTimeout(showTimes,400)},600);
-}
-
-function showTimes(){
-  var ts=['09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30','20:00'];
-  var h='<div class="times">';
-  ts.forEach(function(t){h+='<button class="time-btn" onclick="pickTime(this,\''+t+'\')">'+t+'</button>'});
-  h+='</div>';addHtml(h);
-}
-
-function pickTime(el,t){
-  el.parentElement.querySelectorAll('.time-btn').forEach(function(x){x.classList.remove('sel')});
-  el.classList.add('sel');state.time=t;state.step=99;
-  addMsg(state.date+' a las '+t,'user');
-  setTimeout(function(){
-    addMsg('Perfecto '+state.name+'. He registrado tu solicitud de cita:\n\n- Nombre: '+state.name+' '+state.apellidos+'\n- Telefono: '+state.tel+'\n- Servicio: '+state.service+'\n- Fecha: '+state.date+'\n- Hora: '+state.time+'\n\nEnviando datos al salon...');
-    setTimeout(function(){
-      var clean=function(s){return s.replace(/[^\x20-\x7E\xA0-\xFF]/g,'').trim()};
-      var datos={nombre:clean(state.name),apellidos:clean(state.apellidos),telefono:clean(state.tel),servicio:clean(state.service),fecha:clean(state.date),hora:clean(state.time)};
-      if(WEBHOOK_URL){var ifr=document.createElement('iframe');ifr.style.display='none';ifr.src=WEBHOOK_URL+'?nombre='+encodeURIComponent(datos.nombre)+'&apellidos='+encodeURIComponent(datos.apellidos)+'&telefono='+encodeURIComponent(datos.telefono)+'&servicio='+encodeURIComponent(datos.servicio)+'&fecha='+encodeURIComponent(datos.fecha)+'&hora='+encodeURIComponent(datos.hora);document.body.appendChild(ifr);setTimeout(function(){ifr.remove()},5000)}
-      if(WA_NUMBER){var waMsg='Peluqueria - NUEVA CITA\n\nNombre: '+state.name+' '+state.apellidos+'\nTelefono: '+state.tel+'\nServicio: '+state.service+'\nFecha: '+state.date+'\nHora: '+state.time+'\n\nEnviado desde Chatbot IA WhiteMoon';var waUrl='https://api.whatsapp.com/send?phone='+WA_NUMBER+'&text='+encodeURIComponent(waMsg);window.open(waUrl,'_blank')}
-      addHtml('<div class="wa-confirm"><div class="wa-icon">&#x2705;</div><div class="wa-title">Solicitud de cita registrada!</div><div class="wa-text">Hemos enviado tus datos a la peluqueria.<br><br>Revisaran la disponibilidad y si el dia y hora seleccionados no estuvieran disponibles, te llamaran para proponerte la fecha y hora mas cercana posible.<br><br>Gracias por confiar en nosotros!</div></div>');
-      addMsg('Si necesitas algo mas, estoy aqui para ayudarte. Que tengas un excelente dia!');
-    },1500);
-  },1000);
-}
+setTimeout(showTeaser,5000);
+window.addEventListener('scroll',function(){dismissTeaser();},{passive:true,once:true});
 </script>
 </body>
 </html>
