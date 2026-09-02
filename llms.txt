@@ -1,0 +1,58 @@
+# Peluquería Aurora
+
+> Peluquería unisex en Madrid Oeste. Corte y peinado, color y tinte, mechas y balayage, tratamientos capilares, keratina y alisados, recogidos de novia y evento, extensiones y barbería. Asesoría de imagen gratuita y precio dicho antes de empezar. Salón ficticio: es una demo comercial de WhiteMoon Agencia IA.
+
+## Contacto
+- Teléfono: +34 643 199 580
+- WhatsApp: https://wa.me/34643199580
+- Email: comercial@whitemoon.es
+- Dirección: Calle de la Aurora 14, 28220 Majadahonda, Comunidad de Madrid (España)
+- Horario: lunes a viernes de 10:00 a 14:00 y de 16:00 a 20:30; sábado y domingo cerrado.
+- Web: https://nexusforgeia.github.io/WHITEMOON-PELUQUERIAS/
+
+## Servicios
+- Corte y peinado: corte trabajado sobre el tipo de pelo, con lavado y peinado incluidos. Unos 45 minutos.
+- Color y tinte: color completo o retoque de raíz, con test de mechón previo cuando el cambio de tono es grande.
+- Mechas y balayage: balayage, babylights o mechas clásicas, siempre con matizado y tratamiento de protección.
+- Tratamientos capilares: hidratación profunda o reparación según el estado de la fibra, con ritual de lavado y masaje.
+- Keratina y alisado: alisado de keratina sin formol para reducir encrespamiento y tiempo de secado en casa.
+- Recogidos y peinados de novia: recogidos, semirrecogidos y peinados de evento; para novia, prueba previa en cita aparte.
+- Extensiones: colocación, adaptación del color y corte final para que el pelo caiga natural, con mantenimiento posterior.
+- Brushing y peinado exprés: lavado, secado y brushing con volumen o liso en media hora.
+- Barbería: corte de caballero, arreglo y perfilado de barba en la zona de barbería del salón.
+- Asesoría de imagen: gratuita y sin compromiso, antes de decidir cualquier servicio.
+
+## Cómo se trabaja
+1. Pides cita: desde el chat con Alexia o por teléfono, eligiendo servicio, día y hora entre los huecos libres reales.
+2. Asesoría: se mira el pelo, se escucha qué se busca y se explica qué es posible hoy y qué necesita varias sesiones.
+3. Precio cerrado: el importe se dice antes de empezar; si a mitad hace falta algo más, se pregunta primero.
+4. Servicio y consejo: al terminar se explica cómo mantenerlo en casa y cuándo tocaría volver.
+
+## Precios orientativos (IVA incluido)
+Son cifras de referencia de una demo, no una oferta. El importe final depende del largo, la densidad y el estado del pelo, y se dice antes de empezar.
+- Asesoría de imagen: gratis.
+- Corte y peinado: desde 25 €. Corte infantil: desde 14 €. Retoque de flequillo: desde 8 €.
+- Brushing y peinado: desde 18 €.
+- Color completo: desde 45 €. Retoque de raíz: desde 32 €. Matiz de color: desde 20 €.
+- Mechas y balayage: desde 75 €.
+- Hidratación profunda: desde 30 €. Keratina y alisado: desde 90 €. Ritual de lavado y masaje: incluido.
+- Extensiones (colocación): desde 150 €.
+- Recogido de evento: desde 45 €. Peinado de novia: desde 85 €. Prueba de novia: desde 40 €.
+- Corte de caballero: desde 16 €. Arreglo de barba: desde 12 €.
+
+## Zona de trabajo
+Madrid Oeste: Majadahonda, Pozuelo de Alarcón, Las Rozas, Boadilla del Monte, Villaviciosa de Odón, Villanueva de la Cañada, Alcorcón y Móstoles.
+
+## Garantías
+- Asesoría de imagen gratuita y sin compromiso antes de decidir nada.
+- El precio se dice antes de empezar, nunca al pasar por caja.
+- La misma persona te lleva de la asesoría al peinado final.
+- Test de mechón antes de un cambio de color grande y tratamiento de protección tras cada decoloración.
+- El matizado va incluido en el servicio de color, no como extra.
+
+## Notas
+- No se publican reseñas, testimonios, valoraciones ni cifras de actividad inventadas: esta web no incluye ninguna métrica ni opinión no verificada.
+- El único canal conversacional es el agente IA "Alexia" en la web. Pregunta el servicio, el nombre y el teléfono, y solo después ofrece día y hora entre los huecos reales de la agenda. Si se elige hora, la cita queda escrita de verdad; si no, queda la solicitud para que el salón llame.
+- Alexia no negocia precios: solo repite los importes orientativos publicados en esta misma web.
+- Las fotografías son de stock bajo licencia Pexels (libres para uso comercial). No representan a clientes, profesionales ni instalaciones reales, y no se usan como testimonios.
+- Es una demo comercial de WhiteMoon (https://whitemoon.es); «Peluquería Aurora» no es un salón real y sus datos son ilustrativos, no constituyen una oferta.
