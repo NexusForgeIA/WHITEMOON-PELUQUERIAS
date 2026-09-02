@@ -1,0 +1,32 @@
+User-agent: *
+Allow: /
+
+# El panel interno de la agenda no debe indexarse
+Disallow: /agenda.html
+
+# Rastreadores de IA / motores generativos (GEO/AEO)
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://nexusforgeia.github.io/WHITEMOON-PELUQUERIAS/sitemap.xml
