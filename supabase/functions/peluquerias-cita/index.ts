@@ -8,9 +8,18 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // de paciente y tratamiento.
 //
 // Acciones:
-//   huecos · reservar · servicios-list · servicio-set · agenda · estado ·
+//   huecos · reservar · buscar-cita · comprobar-nombre · cancelar-cita ·
+//   reprogramar-cita · servicios-list · servicio-set · agenda · estado ·
 //   notas · reprogramar · config-get · config-set · clientes · cliente-get ·
 //   cliente-set
+//
+// Las cuatro acciones de autogestión (buscar-cita, comprobar-nombre,
+// cancelar-cita y reprogramar-cita) son las que usa Alexia desde la web y
+// llevan una comprobación ligera de identidad: nunca devuelven el id ni el
+// nombre de la cita, y para tocarla hay que acertar el nombre con el que se
+// reservó. Las acciones sin comprobación (estado, reprogramar) siguen
+// existiendo para el panel agenda.html, pero ya no hay forma de sacar un
+// cita_id desde la web.
 //
 // Canal de avisos: TELEGRAM.
 //
@@ -50,6 +59,35 @@ const CONFIG_CAMPOS = ['salon_nombre', 'gerente_nombre', 'wa_number', 'gmb_url']
 
 function normTel(t: string): string { return (t || '').replace(/\D/g, ''); }
 
+// Clave de telefono: los ultimos 9 digitos. Quien reserva como "600 123 456"
+// y luego busca su cita como "+34 600123456" es la misma persona, y quedarse
+// con todos los digitos dejaba fuera el prefijo. Espeja la columna generada
+// citas_peluqueria.cliente_telefono_norm.
+function telClave(t: string): string {
+  const d = normTel(t);
+  return d.length > 9 ? d.slice(-9) : d;
+}
+
+// Nombres para comparar, no para mostrar: sin tildes, sin mayusculas y sin
+// espacios de mas. "JOSÉ  Martín" y "jose martin" son la misma persona.
+function normNombre(n: string): string {
+  return (n || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+// Comprobacion ligera de identidad (demo): vale el nombre completo o solo el
+// de pila, en cualquiera de los dos sentidos. No es autenticacion: evita que
+// alguien con un numero ajeno cancele citas a ciegas, nada mas.
+function mismoNombre(dado: string, guardado: string): boolean {
+  const a = normNombre(dado), b = normNombre(guardado);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const pilaA = a.split(' ')[0], pilaB = b.split(' ')[0];
+  if (pilaA.length >= 3 && pilaA === pilaB) return true;
+  return b.includes(a) || a.includes(b);
+}
+
 function clampDur(v: unknown, fallback = 45): number {
   const n = parseInt(String(v), 10);
   return Math.min(Math.max(isNaN(n) ? fallback : n, DUR_MIN), DUR_MAX);
@@ -62,7 +100,7 @@ async function getConfig() {
 }
 
 async function resolverCliente(nombre: string, telefono: string): Promise<string | null> {
-  const tn = normTel(telefono);
+  const tn = telClave(telefono);
   if (!tn) return null;
   const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?telefono_norm=eq.${encodeURIComponent(tn)}&select=id`, { headers: REST_HEADERS });
   const rows = await r.json();
@@ -102,6 +140,19 @@ function addMin(hhmm: string, min: number): string {
 
 function fmtMadrid(iso: string): string {
   return new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+}
+
+// La fecha y la hora que ve el cliente se formatean aquí, en hora de Madrid,
+// y no en el navegador: `cita_at` sale de Postgres en UTC y un visitante en
+// otro huso lo pintaría con su hora local. El servidor manda.
+function fmtFechaLarga(iso: string): string {
+  return new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
+}
+function fmtHoraMadrid(iso: string): string {
+  return new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+}
+function fmtDiaISO(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
 }
 
 async function citasDelRango(desdeISO: string, hastaISO: string) {
@@ -269,7 +320,7 @@ Deno.serve(async (req: Request) => {
       const nombre = String(body.nombre || '').slice(0, 120).trim();
       const telefono = String(body.telefono || '').slice(0, 30).trim();
       const notas = body.notas === undefined ? undefined : (body.notas === null ? null : String(body.notas).slice(0, 3000));
-      const tn = normTel(telefono);
+      const tn = telClave(telefono);
       if (!cid && (!nombre || tn.length < 9)) return json({ error: 'nombre y telefono (min 9 digitos) obligatorios para crear' }, 400);
       if (tn) {
         const dup = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?telefono_norm=eq.${encodeURIComponent(tn)}&select=id`, { headers: REST_HEADERS });
@@ -346,7 +397,114 @@ Deno.serve(async (req: Request) => {
       const cfg = await getConfig();
       await log(cita.id, 'reservada', `${servicio} ${citaAt} (${nombre})`);
       const notified = await notificarSalon(`💇 NUEVA CITA${cfg.salon_nombre ? ' - ' + cfg.salon_nombre : ''}\nCliente: ${nombre}\nTel: ${telefono}\nServicio: ${servicio} (${duracion} min)\nCuando: ${fmtMadrid(citaAt)}`);
-      return json({ ok: true, cita_id: cita.id, cita_at: citaAt, cuando: fmtMadrid(citaAt), notified });
+      return json({ ok: true, cita_id: cita.id, cita_at: citaAt, cuando: fmtMadrid(citaAt), fecha: fmtFechaLarga(citaAt), hora: fmtHoraMadrid(citaAt), dia: fmtDiaISO(citaAt), notified });
+    }
+
+    // ---- BUSCAR CITA POR TELEFONO (autogestion desde la web) ----
+    // Devuelve la proxima cita viva de ese telefono. A proposito NO devuelve
+    // ni el id ni el nombre: el id abriria la puerta a `estado`/`reprogramar`,
+    // que no comprueban nada, y el nombre es justo lo que se pide despues para
+    // confirmar que la cita es tuya.
+    if (action === 'buscar-cita') {
+      const tn = telClave(String(body.telefono || ''));
+      if (tn.length < 9) return json({ error: 'telefono de al menos 9 digitos obligatorio' }, 400);
+      const desde = new Date().toISOString();
+      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=servicio,duracion_min,cita_at&order=cita_at.asc&limit=1`;
+      const r = await fetch(url, { headers: REST_HEADERS });
+      const rows = await r.json();
+      const cita = Array.isArray(rows) ? rows[0] : null;
+      if (!cita) return json({ ok: true, encontrada: false });
+      return json({
+        ok: true,
+        encontrada: true,
+        cita: {
+          servicio: cita.servicio,
+          duracion_min: cita.duracion_min,
+          cita_at: cita.cita_at,
+          cuando: fmtMadrid(cita.cita_at),
+          fecha: fmtFechaLarga(cita.cita_at),
+          hora: fmtHoraMadrid(cita.cita_at),
+          dia: fmtDiaISO(cita.cita_at),
+        },
+      });
+    }
+
+    // ---- COMPROBAR NOMBRE (sin tocar nada) ----
+    // Alexia lo llama justo después de pedir el nombre, para no hacer que
+    // alguien elija día y hora y solo entonces enterarse de que el nombre no
+    // cuadra. No revela cuál es el correcto: solo dice sí o no.
+    if (action === 'comprobar-nombre') {
+      const tn = telClave(String(body.telefono || ''));
+      const nombre = String(body.nombre || '').trim();
+      if (tn.length < 9) return json({ error: 'telefono de al menos 9 digitos obligatorio' }, 400);
+      if (!nombre) return json({ error: 'nombre obligatorio' }, 400);
+      const desde = new Date().toISOString();
+      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=cliente_nombre&order=cita_at.asc&limit=1`;
+      const r = await fetch(url, { headers: REST_HEADERS });
+      const rows = await r.json();
+      const cita = Array.isArray(rows) ? rows[0] : null;
+      if (!cita) return json({ ok: true, coincide: false, reason: 'sin-cita' });
+      return json({ ok: true, coincide: mismoNombre(nombre, cita.cliente_nombre) });
+    }
+
+    // ---- CANCELAR / REPROGRAMAR LA PROPIA CITA ----
+    // Ambas resuelven la cita por telefono en el servidor y exigen acertar el
+    // nombre. Nunca reciben un cita_id de fuera.
+    if (action === 'cancelar-cita' || action === 'reprogramar-cita') {
+      const tn = telClave(String(body.telefono || ''));
+      const nombre = String(body.nombre || '').trim();
+      if (tn.length < 9) return json({ error: 'telefono de al menos 9 digitos obligatorio' }, 400);
+      if (!nombre) return json({ error: 'nombre obligatorio' }, 400);
+
+      const desde = new Date().toISOString();
+      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=id,cliente_nombre,cliente_telefono,servicio,duracion_min,cita_at&order=cita_at.asc&limit=1`;
+      const r = await fetch(url, { headers: REST_HEADERS });
+      const rows = await r.json();
+      const cita = Array.isArray(rows) ? rows[0] : null;
+      if (!cita) return json({ ok: false, reason: 'sin-cita' });
+      if (!mismoNombre(nombre, cita.cliente_nombre)) return json({ ok: false, reason: 'nombre-no-coincide' });
+
+      const cfg = await getConfig();
+
+      if (action === 'cancelar-cita') {
+        await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(cita.id)}`, {
+          method: 'PATCH',
+          headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ estado: 'cancelada' }),
+        });
+        await log(cita.id, 'cancelada-cliente', `${cita.servicio} ${cita.cita_at} (${cita.cliente_nombre})`);
+        const notified = await notificarSalon(`❌ CITA CANCELADA por el cliente${cfg.salon_nombre ? ' - ' + cfg.salon_nombre : ''}\nCliente: ${cita.cliente_nombre}\nTel: ${cita.cliente_telefono}\nServicio: ${cita.servicio}\nEra: ${fmtMadrid(cita.cita_at)}\n\nEl hueco vuelve a estar libre.`);
+        return json({ ok: true, cancelada: true, servicio: cita.servicio, cuando: fmtMadrid(cita.cita_at), fecha: fmtFechaLarga(cita.cita_at), hora: fmtHoraMadrid(cita.cita_at), notified });
+      }
+
+      // reprogramar-cita
+      const citaAt = String(body.cita_at || '');
+      if (isNaN(Date.parse(citaAt))) return json({ error: 'cita_at ISO obligatorio' }, 400);
+      const duracion = cita.duracion_min || 45;
+      const ini = Date.parse(citaAt);
+      const fin = ini + duracion * 60000;
+      const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(citaAt));
+      if (!esLaborable(dia)) return json({ ok: false, reason: 'dia-cerrado' });
+      const off = madridOffset(dia);
+      // Se excluye la propia cita: mover de 11:00 a 11:30 no puede chocar
+      // consigo misma.
+      const ocupadas = (await citasDelRango(`${dia}T00:00:00${off}`, `${dia}T23:59:59${off}`)).filter((c: any) => c.id !== cita.id);
+      const choca = ocupadas.some((c: any) => {
+        const cIni = Date.parse(c.cita_at);
+        return seSolapan(ini, fin, cIni, cIni + (c.duracion_min || 45) * 60000);
+      });
+      if (choca) return json({ ok: false, reason: 'hueco-ocupado' });
+
+      // Un solo UPDATE mueve la cita: el hueco viejo queda libre en cuanto
+      // cambia cita_at, no hay que borrar y volver a crear.
+      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(cita.id)}`, {
+        method: 'PATCH',
+        headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ cita_at: citaAt }),
+      });
+      await log(cita.id, 'reprogramada-cliente', `${cita.cita_at} -> ${citaAt}`);
+      const notified = await notificarSalon(`🔁 CITA CAMBIADA por el cliente${cfg.salon_nombre ? ' - ' + cfg.salon_nombre : ''}\nCliente: ${cita.cliente_nombre}\nTel: ${cita.cliente_telefono}\nServicio: ${cita.servicio} (${duracion} min)\nAntes: ${fmtMadrid(cita.cita_at)}\nAhora: ${fmtMadrid(citaAt)}`);
+      return json({ ok: true, reprogramada: true, servicio: cita.servicio, antes: fmtMadrid(cita.cita_at), cuando: fmtMadrid(citaAt), cita_at: citaAt, fecha: fmtFechaLarga(citaAt), hora: fmtHoraMadrid(citaAt), dia: fmtDiaISO(citaAt), notified });
     }
 
     // ---- AGENDA ----
@@ -434,7 +592,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, cita_id: citaId, cita_at: citaAt, cuando: fmtMadrid(citaAt) });
     }
 
-    return json({ error: 'action debe ser huecos, reservar, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list o servicio-set' }, 400);
+    return json({ error: 'action debe ser huecos, reservar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list o servicio-set' }, 400);
   } catch (e) {
     return json({ error: String(e) }, 500);
   }

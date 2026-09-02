@@ -1,9 +1,14 @@
 /* =========================================================================
    Alexia — Agente IA de Peluquería Aurora (demo WhiteMoon)
 
-   Flujo: servicio -> nombre -> teléfono -> día -> hora -> confirmación.
-   El día y la hora van DETRÁS del contacto a propósito: así, si alguien
-   abandona en el calendario, el lead ya está completo y no se pierde.
+   Flujo de reserva: servicio -> nombre -> teléfono -> día -> hora ->
+   confirmación. El día y la hora van DETRÁS del contacto a propósito: así, si
+   alguien abandona en el calendario, el lead ya está completo y no se pierde.
+
+   Flujo de gestión (cambiar o cancelar una cita ya hecha): teléfono ->
+   `buscar-cita` -> se muestra la cita -> nombre para confirmar identidad ->
+   cambiar (nuevo día y hora entre los huecos reales) o cancelar. La comprueba
+   y la mueve el servidor: aquí no viaja ningún id de cita.
 
    Los huecos NO se inventan en cliente: se piden a la Edge Function
    `peluquerias-cita` (action 'huecos'), y al elegir hora se reserva de
@@ -33,7 +38,13 @@
   const LEADS_URL = SUPABASE_URL + "/rest/v1/leads_web";
   const ORIGEN = "demo-peluquerias";
   const SECTOR = "Peluquería";
+  const SALON = "Peluquería Aurora";
   const TELEFONO = "643 199 580";
+  /* Cierre de una cita cerrada: sin número al que llamar y sin remitir a otro
+     canal. Si hay que cambiarla, se cambia aquí mismo. */
+  const CIERRE_CITA =
+    "¡Te esperamos! ¿Necesitas cambiar o cancelar? Vuelve a hablar conmigo y " +
+    "dime tu teléfono, y te la gestiono al momento.";
 
   /* Categorías: los `label` son EXACTAMENTE los data-servicio de los botones
      "Pedir cita" de las tarjetas, para que al entrar desde una tarjeta se
@@ -111,12 +122,21 @@
   const sendBtn = $(".alexia-foot button", panel);
   const btn = $("#alexia-open");
 
+  /* Entrada extra del menú inicial: no es un servicio, abre la autogestión. */
+  const GESTION = { label: "Cambiar o cancelar mi cita", gestion: true };
+
   const lead = {
     servicio: "", interes: "", svc: "", dur: 45,
     nombre: "", telefono: "",
     dia: "", diaISO: "", hora: "", citaAt: "", citaId: "",
   };
+  /* Datos de la autogestión, separados del lead a propósito: cambiar una cita
+     que ya existe no es un lead nuevo y no debe acabar en leads_web. */
+  const gestion = { telefono: "", nombre: "", cita: null, accion: "" };
+
   let step = "work";       // work -> name -> phone -> fecha -> hora -> done
+                           // gestión: g-tel -> g-nombre -> fecha -> hora
+  let modo = "reserva";    // reserva | gestion — decide a dónde va el calendario
   let started = false;
   let vista = null;        // mes que pinta el calendario
   let enviado = false;     // el lead solo se manda una vez
@@ -209,8 +229,16 @@
     setInput(false);
     sincronizaDuraciones();
     await botSay("Hola, soy Alexia, el asistente de Peluquería Aurora. Te busco cita en un minuto, sin llamadas.");
-    await botSay("¿Qué te apetece hacerte?", () => {
-      setQuick(WORKS, (w) => { addMsg(w.label, "user"); pickWork(w.label); });
+    await botSay("¿Qué te apetece hacerte?", () => menuInicial());
+  };
+
+  const menuInicial = () => {
+    modo = "reserva";
+    step = "work";
+    setInput(false);
+    setQuick(WORKS.concat([GESTION]), (w) => {
+      addMsg(w.label, "user");
+      if (w.gestion) askGestionTel(); else pickWork(w.label);
     });
   };
 
@@ -317,34 +345,66 @@
 
     const nota = document.createElement("p");
     nota.className = "alexia-cal__nota";
-    nota.textContent = "Lunes a viernes. Si lo necesitas para hoy mismo, llámanos al " + TELEFONO + ".";
+    nota.textContent = modo === "gestion"
+      ? "Lunes a viernes. Elige el nuevo día para tu cita."
+      : "Lunes a viernes. Si lo necesitas para hoy mismo, llámanos al " + TELEFONO + ".";
     box.appendChild(nota);
 
-    /* Salida sin cita: se cierra igual y llamamos nosotros. */
     const salir = document.createElement("button");
     salir.type = "button"; salir.className = "alexia-back";
-    salir.textContent = "Prefiero que me llaméis vosotros";
-    salir.addEventListener("click", () => {
-      addMsg("Prefiero que me llaméis vosotros", "user");
-      quitaWidget();
-      cierreSinCita();
-    });
+    if (modo === "gestion") {
+      /* En gestión, salir del calendario es dejar la cita donde estaba. */
+      salir.textContent = "Dejarla como está";
+      salir.addEventListener("click", () => {
+        addMsg("Dejarla como está", "user");
+        quitaWidget();
+        cierreGestion("Perfecto, no toco nada: tu cita sigue igual.");
+      });
+    } else {
+      /* Salida sin cita: se cierra igual y llamamos nosotros. */
+      salir.textContent = "Prefiero que me llaméis vosotros";
+      salir.addEventListener("click", () => {
+        addMsg("Prefiero que me llaméis vosotros", "user");
+        quitaWidget();
+        cierreSinCita();
+      });
+    }
     box.appendChild(salir);
   }
 
   const eligeFecha = async (fecha) => {
-    lead.dia = formatoLargo(fecha);
-    lead.diaISO = isoLocal(fecha);
+    if (modo === "gestion") {
+      gestion.diaISO = isoLocal(fecha);
+      gestion.dia = formatoLargo(fecha);
+    } else {
+      lead.dia = formatoLargo(fecha);
+      lead.diaISO = isoLocal(fecha);
+    }
     addMsg(formatoCorto(fecha), "user");
     quitaWidget();
     askHora(fecha);
   };
 
+  /* "Elegir otro día" vuelve al calendario, pero el texto cambia: en una
+     reserva se está apuntando por primera vez y en una gestión se está
+     moviendo algo que ya existe. */
+  const otroDia = async () => {
+    if (modo !== "gestion") { askFecha(); return; }
+    step = "fecha";
+    clearQuick();
+    await botSay("Sin problema. ¿Qué otro día te viene mejor?", () => {
+      setInput(false, "Elige un día en el calendario");
+      pintaCalendario();
+    });
+  };
+
   /* ---------- hora: huecos REALES de la agenda ---------- */
   const askHora = async (fecha) => {
     step = "hora";
+    const dia = modo === "gestion" ? gestion.diaISO : lead.diaISO;
+    const dur = modo === "gestion" ? (gestion.cita && gestion.cita.duracion_min) || 45 : lead.dur;
     const t = typing();
-    const res = await agenda({ action: "huecos", dia: lead.diaISO, duracion_min: lead.dur });
+    const res = await agenda({ action: "huecos", dia: dia, duracion_min: dur });
     t.remove();
 
     const huecos = res && res.ok && Array.isArray(res.huecos) ? res.huecos : [];
@@ -366,16 +426,25 @@
     const atras = document.createElement("button");
     atras.type = "button"; atras.className = "alexia-back";
     atras.textContent = "Elegir otro día";
-    atras.addEventListener("click", () => { quitaWidget(); askFecha(); });
+    atras.addEventListener("click", () => { quitaWidget(); otroDia(); });
     box.appendChild(atras);
     const salir = document.createElement("button");
     salir.type = "button"; salir.className = "alexia-back";
-    salir.textContent = "Prefiero que me llaméis vosotros";
-    salir.addEventListener("click", () => {
-      addMsg("Prefiero que me llaméis vosotros", "user");
-      quitaWidget();
-      cierreSinCita();
-    });
+    if (modo === "gestion") {
+      salir.textContent = "Dejarla como está";
+      salir.addEventListener("click", () => {
+        addMsg("Dejarla como está", "user");
+        quitaWidget();
+        cierreGestion("Perfecto, no toco nada: tu cita sigue igual.");
+      });
+    } else {
+      salir.textContent = "Prefiero que me llaméis vosotros";
+      salir.addEventListener("click", () => {
+        addMsg("Prefiero que me llaméis vosotros", "user");
+        quitaWidget();
+        cierreSinCita();
+      });
+    }
     box.appendChild(salir);
   }
 
@@ -402,11 +471,17 @@
     const atras = document.createElement("button");
     atras.type = "button"; atras.className = "alexia-back";
     atras.textContent = "Elegir otro día";
-    atras.addEventListener("click", () => { addMsg("Prefiero otro día", "user"); quitaWidget(); askFecha(); });
+    atras.addEventListener("click", () => { addMsg("Prefiero otro día", "user"); quitaWidget(); otroDia(); });
     box.appendChild(atras);
   }
 
   const eligeHora = async (iso, fecha) => {
+    if (modo === "gestion") {
+      addMsg(horaDe(iso), "user");
+      quitaWidget();
+      confirmaCambio(iso, fecha);
+      return;
+    }
     lead.hora = horaDe(iso);
     lead.citaAt = iso;
     addMsg(lead.hora, "user");
@@ -414,8 +489,12 @@
     reservar(fecha);
   };
 
-  /* Tarjeta de éxito: el SVG del check es decorativo (aria-hidden), el texto
-     es quien transmite el resultado. */
+  const CHECK_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" ' +
+    'stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+  /* Aviso simple: el SVG del check es decorativo (aria-hidden), el texto es
+     quien transmite el resultado. */
   const tarjetaExito = (texto) => {
     const el = document.createElement("div");
     el.className = "alexia-ok";
@@ -423,15 +502,62 @@
     const ic = document.createElement("span");
     ic.className = "alexia-ok__ic";
     ic.setAttribute("aria-hidden", "true");
-    ic.innerHTML =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" ' +
-      'stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    ic.innerHTML = CHECK_SVG;
     const p = document.createElement("p");
     p.textContent = texto;
     el.append(ic, p);
     body.appendChild(el);
     scroll();
   };
+
+  /* Tarjeta verde de cita: un resguardo, no un mensaje más del chat. Se pinta
+     con nodos y textContent, nunca con innerHTML, para que un nombre con
+     comillas o un "<" no pueda inyectar nada. `filas` es [[etiqueta, valor]].
+     role="status" hace que un lector de pantalla la lea al aparecer. */
+  const tarjetaCita = (titulo, filas) => {
+    const el = document.createElement("div");
+    el.className = "alexia-cita";
+    el.setAttribute("role", "status");
+
+    const head = document.createElement("div");
+    head.className = "alexia-cita__head";
+    const ic = document.createElement("span");
+    ic.className = "alexia-cita__ic";
+    ic.setAttribute("aria-hidden", "true");
+    ic.innerHTML = CHECK_SVG;
+    const b = document.createElement("b");
+    b.textContent = titulo;
+    head.append(ic, b);
+
+    const dl = document.createElement("dl");
+    dl.className = "alexia-cita__rows";
+    filas.forEach(([k, v]) => {
+      if (!v) return;
+      const row = document.createElement("div");
+      row.className = "alexia-cita__row";
+      const dt = document.createElement("dt");
+      dt.textContent = k;
+      const dd = document.createElement("dd");
+      dd.textContent = v;
+      row.append(dt, dd);
+      dl.appendChild(row);
+    });
+
+    el.append(head, dl);
+    body.appendChild(el);
+    scroll();
+  };
+
+  /* Una cita, en filas etiqueta/valor. `datos` viene del servidor ya
+     formateado en hora de Madrid. */
+  const filasCita = (datos) => [
+    ["Nombre", datos.nombre],
+    ["Teléfono", datos.telefono],
+    ["Servicio", datos.servicio],
+    ["Fecha", datos.fecha],
+    ["Hora", datos.hora],
+    ["Lugar", SALON],
+  ];
 
   /* ---------- reserva real contra la agenda ---------- */
   const reservar = async (fecha) => {
@@ -463,15 +589,19 @@
 
     step = "done";
     lead.citaId = res.cita_id || "";
+    /* La fecha y la hora las pone el servidor en hora de Madrid; el `lead`
+       guarda las del navegador solo para el texto del aviso interno. */
+    if (res.fecha) lead.dia = res.fecha;
+    if (res.hora) lead.hora = res.hora;
     await enviarLead();
-    tarjetaExito("¡Listo! Cita confirmada para el " + lead.dia + " a las " + lead.hora + ".");
-    setTimeout(
-      () => addMsg(
-        "Te esperamos para tu " + lead.servicio.toLowerCase() +
-        ". Si necesitas cambiarla, llámanos al " + TELEFONO + ".", "bot"
-      ),
-      700
-    );
+    tarjetaCita("¡Cita confirmada!", filasCita({
+      nombre: lead.nombre,
+      telefono: lead.telefono,
+      servicio: lead.servicio,
+      fecha: res.fecha || lead.dia,
+      hora: res.hora || lead.hora,
+    }));
+    setTimeout(() => addMsg(CIERRE_CITA, "bot"), 700);
   };
 
   /* Cierre sin hueco confirmado: el lead se guarda igual. */
@@ -492,6 +622,200 @@
     }
   };
 
+  /* ====================================================================
+     GESTIÓN DE UNA CITA YA HECHA
+     teléfono -> buscar -> nombre para confirmar -> cambiar o cancelar.
+     Aquí no viaja ningún id: el servidor resuelve la cita por teléfono y
+     comprueba el nombre antes de tocarla.
+     ==================================================================== */
+
+  const askGestionTel = async () => {
+    modo = "gestion";
+    step = "g-tel";
+    clearQuick();
+    gestion.cita = null; gestion.nombre = ""; gestion.accion = "";
+    await botSay("Claro, te la busco. ¿Con qué teléfono reservaste?",
+      () => setInput(true, "Tu teléfono…"));
+  };
+
+  const buscaCita = async () => {
+    setInput(false); clearQuick();
+    const t = typing();
+    const res = await agenda({ action: "buscar-cita", telefono: gestion.telefono });
+    t.remove();
+
+    if (!res || res._neterr || !res.ok) {
+      await botSay("No he podido consultar la agenda ahora mismo. ¿Lo intentamos otra vez?", () => {
+        setQuick([{ label: "Probar otra vez" }, { label: "Pedir una cita nueva" }], (o) => {
+          addMsg(o.label, "user");
+          if (o.label === "Probar otra vez") buscaCita(); else menuInicial();
+        });
+      });
+      return;
+    }
+
+    if (!res.encontrada) {
+      await botSay("No encuentro ninguna cita futura con ese teléfono. Puede que reservaras con otro número, o que ya haya pasado.");
+      await botSay("¿Quieres probar con otro teléfono o te busco una cita nueva?", () => {
+        setQuick([{ label: "Probar con otro teléfono" }, { label: "Pedir una cita nueva" }], (o) => {
+          addMsg(o.label, "user");
+          if (o.label === "Probar con otro teléfono") askGestionTel(); else menuInicial();
+        });
+      });
+      return;
+    }
+
+    gestion.cita = res.cita;
+    /* Se enseña servicio, fecha y hora, pero NO el nombre: es justo el dato
+       que se pide después para comprobar que la cita es de quien escribe. */
+    tarjetaCita("Esta es tu cita", [
+      ["Servicio", res.cita.servicio],
+      ["Fecha", res.cita.fecha],
+      ["Hora", res.cita.hora],
+      ["Lugar", SALON],
+    ]);
+    await botSay("¿Qué quieres hacer con ella?", () => {
+      setQuick([
+        { label: "Cambiar el día y la hora", accion: "cambiar" },
+        { label: "Cancelar la cita", accion: "cancelar" },
+        { label: "Dejarla como está", accion: "nada" },
+      ], (o) => {
+        addMsg(o.label, "user");
+        if (o.accion === "nada") { cierreGestion("Perfecto, no toco nada: tu cita sigue igual."); return; }
+        gestion.accion = o.accion;
+        askGestionNombre();
+      });
+    });
+  };
+
+  const askGestionNombre = async () => {
+    step = "g-nombre";
+    clearQuick();
+    await botSay("Solo para asegurarme de que es tuya: ¿a nombre de quién está la cita?",
+      () => setInput(true, "Nombre de la reserva…"));
+  };
+
+  /* Con el nombre ya dado se comprueba ANTES de nada. Si no se comprobara
+     aquí, quien se equivoca de nombre elegiría día y hora para toparse con el
+     rechazo al final, después de todo el trabajo. La acción que muta vuelve a
+     comprobarlo por su cuenta: esto es comodidad, no la barrera. */
+  const sigueGestion = async () => {
+    setInput(false); clearQuick();
+    const t = typing();
+    const res = await agenda({
+      action: "comprobar-nombre",
+      telefono: gestion.telefono,
+      nombre: gestion.nombre,
+    });
+    t.remove();
+
+    if (!res || res._neterr || !res.ok) {
+      await botSay("No he podido comprobarlo ahora mismo. ¿Lo intentamos otra vez?", () => {
+        setQuick([{ label: "Probar otra vez" }], () => { addMsg("Probar otra vez", "user"); sigueGestion(); });
+      });
+      return;
+    }
+    if (res.reason === "sin-cita") { sinCitaYa(); return; }
+    if (!res.coincide) { nombreNoCuadra(); return; }
+
+    if (gestion.accion === "cancelar") { cancelaCita(); return; }
+    if (!vista) { const d = hoy(); vista = new Date(d.getFullYear(), d.getMonth(), 1); }
+    step = "fecha";
+    await botSay("Perfecto. ¿Qué día te viene mejor ahora?", () => {
+      setInput(false, "Elige un día en el calendario");
+      pintaCalendario();
+    });
+  };
+
+  /* Nombre que no cuadra: se deja reintentar, pero sin pistas sobre cuál es
+     el correcto. */
+  const nombreNoCuadra = async () => {
+    gestion.nombre = "";
+    await botSay("Ese nombre no me cuadra con la reserva. ¿Lo repasas? Escríbelo tal y como lo diste al pedir la cita.", () => {
+      step = "g-nombre";
+      setInput(true, "Nombre de la reserva…");
+    });
+  };
+
+  const sinCitaYa = async () => {
+    await botSay("Vaya, ya no encuentro esa cita. Puede que la acaben de cancelar desde el salón.", () => {
+      setQuick([{ label: "Pedir una cita nueva" }], (o) => { addMsg(o.label, "user"); menuInicial(); });
+    });
+  };
+
+  const cancelaCita = async () => {
+    setInput(false); clearQuick();
+    const t = typing();
+    const res = await agenda({
+      action: "cancelar-cita",
+      telefono: gestion.telefono,
+      nombre: gestion.nombre,
+    });
+    t.remove();
+
+    if (!res || res._neterr) {
+      await botSay("No he podido conectar con la agenda. Tu cita sigue en pie; inténtalo de nuevo en un momento.");
+      cierreGestion();
+      return;
+    }
+    if (res.ok === false && res.reason === "nombre-no-coincide") { nombreNoCuadra(); return; }
+    if (res.ok === false && res.reason === "sin-cita") { sinCitaYa(); return; }
+    if (!res.ok) { await botSay("No he podido cancelarla. Vuelve a intentarlo en un momento, por favor."); cierreGestion(); return; }
+
+    step = "done";
+    tarjetaCita("Cita cancelada", [
+      ["Servicio", res.servicio],
+      ["Fecha", res.fecha],
+      ["Hora", res.hora],
+      ["Estado", "Cancelada"],
+    ]);
+    setTimeout(() => addMsg(
+      "Listo, ese hueco vuelve a estar libre. Cuando quieras otra cita, dímelo y te la busco.", "bot"), 700);
+  };
+
+  const confirmaCambio = async (iso, fecha) => {
+    setInput(false); clearQuick();
+    const t = typing();
+    const res = await agenda({
+      action: "reprogramar-cita",
+      telefono: gestion.telefono,
+      nombre: gestion.nombre,
+      cita_at: iso,
+    });
+    t.remove();
+
+    if (!res || res._neterr) {
+      await botSay("No he podido conectar con la agenda. Tu cita sigue en la hora de antes; inténtalo de nuevo en un momento.");
+      cierreGestion();
+      return;
+    }
+    if (res.ok === false && res.reason === "hueco-ocupado") {
+      await botSay("Vaya, ese hueco lo acaban de coger. Te enseño los que siguen libres ese día.");
+      askHora(fecha);
+      return;
+    }
+    if (res.ok === false && res.reason === "nombre-no-coincide") { nombreNoCuadra(); return; }
+    if (res.ok === false && res.reason === "sin-cita") { sinCitaYa(); return; }
+    if (!res.ok) { await botSay("No he podido cambiarla. Vuelve a intentarlo en un momento, por favor."); cierreGestion(); return; }
+
+    step = "done";
+    tarjetaCita("¡Cita cambiada!", filasCita({
+      nombre: gestion.nombre,
+      telefono: gestion.telefono,
+      servicio: res.servicio,
+      fecha: res.fecha,
+      hora: res.hora,
+    }));
+    setTimeout(() => addMsg(CIERRE_CITA, "bot"), 700);
+  };
+
+  const cierreGestion = (texto) => {
+    step = "done";
+    modo = "reserva";
+    setInput(false); clearQuick(); quitaWidget();
+    if (texto) addMsg(texto, "bot");
+  };
+
   /* ---------- entrada de texto ---------- */
   /* Guard: mínimo 9 dígitos reales (admite prefijo +34 / 0034 y separadores). */
   const isPhone = (v) => {
@@ -509,6 +833,12 @@
     } else if (step === "phone") {
       if (!isPhone(v)) { botSay("Ese teléfono no parece válido. Escríbelo con 9 dígitos, por favor."); return; }
       lead.telefono = v; setInput(false); askFecha();
+    } else if (step === "g-tel") {
+      if (!isPhone(v)) { botSay("Ese teléfono no parece válido. Escríbelo con 9 dígitos, por favor."); return; }
+      gestion.telefono = v; setInput(false); buscaCita();
+    } else if (step === "g-nombre") {
+      if (v.length < 2) { botSay("¿Me dices el nombre de la reserva, por favor?"); return; }
+      gestion.nombre = v; setInput(false); sigueGestion();
     }
   };
 
@@ -605,6 +935,21 @@
        enfocables con el teclado: inert los saca del recorrido de tabulación. */
     panel.removeAttribute("inert");
     if (btn) btn.style.display = "none";
+    /* Se cerró el chat con algo ya resuelto y se vuelve a abrir: el cierre de
+       una cita invita justo a esto ("vuelve a hablar conmigo"), así que hay
+       que dar salida en vez de dejar el campo bloqueado. */
+    if (started && step === "done") {
+      botSay("¿Te ayudo con algo más?", () => {
+        setQuick([
+          { label: "Cambiar o cancelar mi cita", gestion: true },
+          { label: "Pedir otra cita" },
+        ], (o) => {
+          addMsg(o.label, "user");
+          if (o.gestion) askGestionTel(); else menuInicial();
+        });
+      });
+      return;
+    }
     start();
     /* Si vienen de una tarjeta de servicio, saltamos la elección de categoría. */
     if (servicio && step === "work") {
