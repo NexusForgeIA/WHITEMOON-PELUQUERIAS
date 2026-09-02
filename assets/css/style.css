@@ -441,13 +441,45 @@ section[id]{scroll-margin-top:calc(var(--nav-h) + 12px)}
 .alexia-back{grid-column:1/-1;margin-top:10px;padding:0;border:0;background:none;font-family:var(--body);font-size:.79rem;color:var(--azul-dark);cursor:pointer;text-decoration:underline;text-underline-offset:3px;justify-self:start;text-align:left}
 .alexia-back:hover{color:var(--azul-deep)}
 
-/* ---------- Confirmación de reserva ----------
+/* ---------- Aviso simple del chat ----------
    Rosa profundo #93325f sobre rosa muy claro #fdeef4 = 6.75:1. El rosa
    pastel solo pinta el borde y el disco del check, nunca texto. */
 .alexia-ok{align-self:stretch;display:flex;align-items:flex-start;gap:12px;padding:15px 16px;border:1px solid var(--rosa);border-radius:16px;background:var(--rosa-chip);animation:msgin .32s ease}
 .alexia-ok__ic{width:32px;height:32px;flex-shrink:0;border-radius:50%;background:var(--rosa-dark);color:#fff;display:grid;place-items:center}
 .alexia-ok__ic svg{width:17px;height:17px}
 .alexia-ok p{margin:2px 0 0;font-family:var(--body);font-weight:700;font-size:.93rem;line-height:1.45;color:var(--rosa-deep)}
+
+/* ---------- Tarjeta de cita confirmada ----------
+   Aquí el verde manda sobre la marca: una confirmación se lee en verde en
+   todas partes, y la tarjeta tiene que distinguirse de un mensaje de chat
+   más. Es el único punto de la web fuera de la paleta azul/rosa.
+
+   Contraste medido sobre el fondo #ecfdf5:
+     título   #15803d → 4.76:1
+     datos    #14261c → 15.06:1
+     etiqueta #3f6b52 → 5.80:1
+   El check blanco sobre el disco #16a34a queda en 3.30:1: es un icono
+   decorativo (aria-hidden), no texto, y supera el 3:1 que pide AA para
+   componentes gráficos. Quien transmite el resultado es el título. */
+/* flex-shrink:0 no es decorativo: `.alexia-body` es un flex en columna que
+   desborda, y con `overflow:hidden` la altura mínima automática de un item
+   flex pasa a ser 0. Sin esto la tarjeta se aplasta a la altura del borde. */
+.alexia-cita{
+  align-self:stretch;flex-shrink:0;background:#ecfdf5;border:1px solid #16a34a;border-radius:16px;
+  overflow:hidden;box-shadow:0 10px 26px -14px rgba(22,163,74,.45);animation:msgin .32s ease;
+}
+.alexia-cita__head{display:flex;align-items:center;gap:12px;padding:15px 17px 13px;border-bottom:1px solid rgba(22,163,74,.24)}
+.alexia-cita__ic{width:34px;height:34px;flex-shrink:0;border-radius:50%;background:#16a34a;color:#fff;display:grid;place-items:center}
+.alexia-cita__ic svg{width:18px;height:18px}
+.alexia-cita__head b{font-family:var(--body);font-weight:700;font-size:1rem;line-height:1.3;color:#15803d;letter-spacing:-.01em}
+.alexia-cita__rows{margin:0;padding:4px 17px 14px}
+/* flex-wrap y no grid: si el valor no cabe al lado de la etiqueta (nombres
+   largos, "viernes, 4 de septiembre de 2026" a 360 px), baja a su propia
+   línea en vez de apretarse. */
+.alexia-cita__row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px;padding:9px 0;border-bottom:1px solid rgba(22,163,74,.14)}
+.alexia-cita__row:last-child{border-bottom:0}
+.alexia-cita__row dt{font-family:var(--body);font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#3f6b52;flex-shrink:0}
+.alexia-cita__row dd{margin:0 0 0 auto;font-family:var(--body);font-size:.93rem;font-weight:600;line-height:1.4;color:#14261c;text-align:right;word-break:break-word}
 
 /* ---------- RESPONSIVE ---------- */
 @media (max-width:1080px){
@@ -492,6 +524,9 @@ section[id]{scroll-margin-top:calc(var(--nav-h) + 12px)}
   .alexia-cal__wd{font-size:.6rem}
   .alexia-slots{gap:5px}
   .alexia-slot{font-size:.76rem;padding:8px 2px}
+  .alexia-cita__head{padding:13px 14px 11px}
+  .alexia-cita__rows{padding:4px 14px 12px}
+  .alexia-cita__row dd{font-size:.88rem}
 }
 
 /* ---------- MOVIMIENTO REDUCIDO ---------- */
