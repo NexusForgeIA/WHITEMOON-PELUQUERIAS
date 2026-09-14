@@ -37,6 +37,10 @@
   const CITA_FN = SUPABASE_URL + "/functions/v1/peluquerias-cita";
   const LEADS_URL = SUPABASE_URL + "/rest/v1/leads_web";
   const ORIGEN = "demo-peluquerias";
+  /* Tenant de la agenda: el token del salón (onboarding_clientes.token_cdn).
+     La fábrica sustituye esta línea exacta al clonar; la demo es
+     "demo-peluquerias". */
+  const TENANT_TOKEN = "demo-peluquerias";
   const SECTOR = "Peluquería";
   const SALON = "Peluquería Aurora";
   const TELEFONO = "643 199 580";
@@ -194,12 +198,13 @@
   const quitaWidget = () => { const w = $("#alexia-widget", body); if (w) w.remove(); };
 
   /* ---------- llamadas a peluquerias-cita ---------- */
+  /* Todas las acciones pasan por aquí: cada llamada lleva el token del tenant. */
   const agenda = async (payload) => {
     try {
       const r = await fetch(CITA_FN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(Object.assign({ token: TENANT_TOKEN }, payload)),
       });
       const data = await r.json();
       if (!r.ok) console.warn("[alexia] peluquerias-cita", r.status, data);
