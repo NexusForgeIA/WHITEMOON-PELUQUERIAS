@@ -228,7 +228,7 @@
     if (started) return; started = true;
     setInput(false);
     sincronizaDuraciones();
-    await botSay("Hola, soy Alexia, el asistente de Peluquería Aurora. Te busco cita en un minuto, sin llamadas.");
+    await botSay("Hola, soy el asistente de Peluquería Aurora. Te busco cita en un minuto, sin llamadas.");
     await botSay("¿Qué te apetece hacerte?", () => menuInicial());
   };
 
