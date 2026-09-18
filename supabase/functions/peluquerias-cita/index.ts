@@ -21,6 +21,11 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // existiendo para el panel agenda.html, pero ya no hay forma de sacar un
 // cita_id desde la web.
 //
+// Solo la demo: todas las lecturas y escrituras van acotadas al tenant
+// 'demo-peluquerias'. Las tablas son multi-tenant (los salones clientes usan
+// peluquerias-cita-mt), y esta función no filtraba: el panel de la demo veía,
+// y podía tocar, datos de otros salones.
+//
 // Canal de avisos: TELEGRAM.
 //
 // Secrets usados (nunca en cliente):
@@ -40,6 +45,11 @@ const GMB_FALLBACK = 'https://maps.app.goo.gl/3b9zDZrC8uvJfmYt7';
 
 // El chat_id no es un secreto (solo identifica el destino); el token si lo es.
 const CHAT_ID_FALLBACK = '861432965';
+
+// Tenant de la demo: filtro PostgREST de TODAS las consultas y valor de TODOS
+// los INSERT.
+const DEMO_TENANT = 'demo-peluquerias';
+const EN_DEMO = `tenant=eq.${DEMO_TENANT}`;
 
 const REST_HEADERS = {
   'Content-Type': 'application/json',
@@ -94,7 +104,7 @@ function clampDur(v: unknown, fallback = 45): number {
 }
 
 async function getConfig() {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/peluqueria_config?id=eq.1&select=salon_nombre,gerente_nombre,wa_number,gmb_url,updated_at`, { headers: REST_HEADERS });
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/peluqueria_config?${EN_DEMO}&select=salon_nombre,gerente_nombre,wa_number,gmb_url,updated_at`, { headers: REST_HEADERS });
   const rows = await r.json();
   return Array.isArray(rows) && rows[0] ? rows[0] : { salon_nombre: '', gerente_nombre: '', wa_number: '', gmb_url: '', updated_at: null };
 }
@@ -102,13 +112,13 @@ async function getConfig() {
 async function resolverCliente(nombre: string, telefono: string): Promise<string | null> {
   const tn = telClave(telefono);
   if (!tn) return null;
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?telefono_norm=eq.${encodeURIComponent(tn)}&select=id`, { headers: REST_HEADERS });
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?${EN_DEMO}&telefono_norm=eq.${encodeURIComponent(tn)}&select=id`, { headers: REST_HEADERS });
   const rows = await r.json();
   if (Array.isArray(rows) && rows[0]) return rows[0].id;
   const ins = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria`, {
     method: 'POST',
     headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
-    body: JSON.stringify({ nombre: nombre.slice(0, 120), telefono: telefono.slice(0, 30), telefono_norm: tn }),
+    body: JSON.stringify({ tenant: DEMO_TENANT, nombre: nombre.slice(0, 120), telefono: telefono.slice(0, 30), telefono_norm: tn }),
   });
   const created = await ins.json();
   return Array.isArray(created) && created[0] ? created[0].id : null;
@@ -156,7 +166,7 @@ function fmtDiaISO(iso: string): string {
 }
 
 async function citasDelRango(desdeISO: string, hastaISO: string) {
-  const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?cita_at=gte.${encodeURIComponent(desdeISO)}&cita_at=lt.${encodeURIComponent(hastaISO)}&estado=neq.cancelada&select=id,cita_at,duracion_min,estado,cliente_nombre,cliente_telefono,servicio,resena_enviada&order=cita_at.asc`;
+  const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&cita_at=gte.${encodeURIComponent(desdeISO)}&cita_at=lt.${encodeURIComponent(hastaISO)}&estado=neq.cancelada&select=id,cita_at,duracion_min,estado,cliente_nombre,cliente_telefono,servicio,resena_enviada&order=cita_at.asc`;
   const r = await fetch(url, { headers: REST_HEADERS });
   const rows = await r.json();
   return Array.isArray(rows) ? rows : [];
@@ -218,7 +228,7 @@ async function log(citaId: string | null, accion: string, detalle: string) {
   await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria_log`, {
     method: 'POST',
     headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ cita_id: citaId, accion, detalle }),
+    body: JSON.stringify({ tenant: DEMO_TENANT, cita_id: citaId, accion, detalle }),
   }).catch(() => {});
 }
 
@@ -234,7 +244,7 @@ Deno.serve(async (req: Request) => {
 
     // ---- SERVICIOS: catalogo con precios y duraciones ----
     if (action === 'servicios-list') {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?select=id,nombre,duracion_min,precio_eur,activo,orden,updated_at&order=orden.asc`, { headers: REST_HEADERS });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${EN_DEMO}&select=id,nombre,duracion_min,precio_eur,activo,orden,updated_at&order=orden.asc`, { headers: REST_HEADERS });
       const rows = await r.json();
       return json({ ok: true, servicios: Array.isArray(rows) ? rows : [] });
     }
@@ -257,7 +267,7 @@ Deno.serve(async (req: Request) => {
       }
       if ('activo' in campos) patch.activo = Boolean(campos.activo);
       if (Object.keys(patch).length <= 1) return json({ error: 'sin campos validos (precio_eur, duracion_min, activo)' }, 400);
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?id=eq.${encodeURIComponent(sid)}`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(sid)}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
         body: JSON.stringify(patch),
@@ -283,7 +293,7 @@ Deno.serve(async (req: Request) => {
       if (Object.keys(patch).length <= 1) return json({ error: 'sin campos validos' }, 400);
       const wa = 'wa_number' in patch ? String(patch.wa_number) : '';
       if (wa && !/^34\d{9}$/.test(wa)) return json({ error: 'wa_number debe ser 34 + 9 digitos (ej. 34600111222)' }, 400);
-      await fetch(`${SUPABASE_URL}/rest/v1/peluqueria_config?id=eq.1`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/peluqueria_config?${EN_DEMO}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
         body: JSON.stringify(patch),
@@ -300,18 +310,18 @@ Deno.serve(async (req: Request) => {
         const qEnc = encodeURIComponent(`*${q}*`);
         filtro = `&or=(nombre.ilike.${qEnc},telefono.ilike.${qEnc})`;
       }
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria_resumen?select=id,nombre,telefono,notas,n_citas,ultima_cita,created_at${filtro}&order=ultima_cita.desc.nullslast&limit=200`, { headers: REST_HEADERS });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria_resumen?${EN_DEMO}&select=id,nombre,telefono,notas,n_citas,ultima_cita,created_at${filtro}&order=ultima_cita.desc.nullslast&limit=200`, { headers: REST_HEADERS });
       const rows = await r.json();
       return json({ ok: true, clientes: Array.isArray(rows) ? rows : [] });
     }
     if (action === 'cliente-get') {
       const cid = String(body.cliente_id || '');
       if (!cid) return json({ error: 'cliente_id obligatorio' }, 400);
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?id=eq.${encodeURIComponent(cid)}&select=id,nombre,telefono,notas,created_at,updated_at`, { headers: REST_HEADERS });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(cid)}&select=id,nombre,telefono,notas,created_at,updated_at`, { headers: REST_HEADERS });
       const rows = await r.json();
       const cliente = Array.isArray(rows) ? rows[0] : null;
       if (!cliente) return json({ error: 'cliente no encontrado' }, 404);
-      const cr = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?cliente_id=eq.${encodeURIComponent(cid)}&select=id,cita_at,servicio,duracion_min,estado,notas,resena_enviada&order=cita_at.desc&limit=100`, { headers: REST_HEADERS });
+      const cr = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&cliente_id=eq.${encodeURIComponent(cid)}&select=id,cita_at,servicio,duracion_min,estado,notas,resena_enviada&order=cita_at.desc&limit=100`, { headers: REST_HEADERS });
       const citas = await cr.json();
       return json({ ok: true, cliente, historial: Array.isArray(citas) ? citas : [] });
     }
@@ -323,7 +333,7 @@ Deno.serve(async (req: Request) => {
       const tn = telClave(telefono);
       if (!cid && (!nombre || tn.length < 9)) return json({ error: 'nombre y telefono (min 9 digitos) obligatorios para crear' }, 400);
       if (tn) {
-        const dup = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?telefono_norm=eq.${encodeURIComponent(tn)}&select=id`, { headers: REST_HEADERS });
+        const dup = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?${EN_DEMO}&telefono_norm=eq.${encodeURIComponent(tn)}&select=id`, { headers: REST_HEADERS });
         const dRows = await dup.json();
         if (Array.isArray(dRows) && dRows[0] && dRows[0].id !== cid) {
           return json({ ok: false, reason: 'ya existe un cliente con ese telefono' });
@@ -334,7 +344,7 @@ Deno.serve(async (req: Request) => {
         if (nombre) patch.nombre = nombre;
         if (telefono && tn.length >= 9) { patch.telefono = telefono; patch.telefono_norm = tn; }
         if (notas !== undefined) patch.notas = notas;
-        const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?id=eq.${encodeURIComponent(cid)}`, {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(cid)}`, {
           method: 'PATCH',
           headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
           body: JSON.stringify(patch),
@@ -347,7 +357,7 @@ Deno.serve(async (req: Request) => {
       const ins = await fetch(`${SUPABASE_URL}/rest/v1/clientes_peluqueria`, {
         method: 'POST',
         headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
-        body: JSON.stringify({ nombre, telefono, telefono_norm: tn, notas: notas ?? null }),
+        body: JSON.stringify({ tenant: DEMO_TENANT, nombre, telefono, telefono_norm: tn, notas: notas ?? null }),
       });
       const created = await ins.json();
       const c = Array.isArray(created) ? created[0] : null;
@@ -389,7 +399,7 @@ Deno.serve(async (req: Request) => {
       const insRes = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria`, {
         method: 'POST',
         headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
-        body: JSON.stringify({ cliente_nombre: nombre, cliente_telefono: telefono, servicio, duracion_min: duracion, cita_at: citaAt, cliente_id: clienteId }),
+        body: JSON.stringify({ tenant: DEMO_TENANT, cliente_nombre: nombre, cliente_telefono: telefono, servicio, duracion_min: duracion, cita_at: citaAt, cliente_id: clienteId }),
       });
       const rows = await insRes.json();
       const cita = Array.isArray(rows) ? rows[0] : null;
@@ -409,7 +419,7 @@ Deno.serve(async (req: Request) => {
       const tn = telClave(String(body.telefono || ''));
       if (tn.length < 9) return json({ error: 'telefono de al menos 9 digitos obligatorio' }, 400);
       const desde = new Date().toISOString();
-      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=servicio,duracion_min,cita_at&order=cita_at.asc&limit=1`;
+      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=servicio,duracion_min,cita_at&order=cita_at.asc&limit=1`;
       const r = await fetch(url, { headers: REST_HEADERS });
       const rows = await r.json();
       const cita = Array.isArray(rows) ? rows[0] : null;
@@ -439,7 +449,7 @@ Deno.serve(async (req: Request) => {
       if (tn.length < 9) return json({ error: 'telefono de al menos 9 digitos obligatorio' }, 400);
       if (!nombre) return json({ error: 'nombre obligatorio' }, 400);
       const desde = new Date().toISOString();
-      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=cliente_nombre&order=cita_at.asc&limit=1`;
+      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=cliente_nombre&order=cita_at.asc&limit=1`;
       const r = await fetch(url, { headers: REST_HEADERS });
       const rows = await r.json();
       const cita = Array.isArray(rows) ? rows[0] : null;
@@ -457,7 +467,7 @@ Deno.serve(async (req: Request) => {
       if (!nombre) return json({ error: 'nombre obligatorio' }, 400);
 
       const desde = new Date().toISOString();
-      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=id,cliente_nombre,cliente_telefono,servicio,duracion_min,cita_at&order=cita_at.asc&limit=1`;
+      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&cliente_telefono_norm=eq.${encodeURIComponent(tn)}&cita_at=gte.${encodeURIComponent(desde)}&estado=in.(agendada,confirmada)&select=id,cliente_nombre,cliente_telefono,servicio,duracion_min,cita_at&order=cita_at.asc&limit=1`;
       const r = await fetch(url, { headers: REST_HEADERS });
       const rows = await r.json();
       const cita = Array.isArray(rows) ? rows[0] : null;
@@ -467,7 +477,7 @@ Deno.serve(async (req: Request) => {
       const cfg = await getConfig();
 
       if (action === 'cancelar-cita') {
-        await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(cita.id)}`, {
+        await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(cita.id)}`, {
           method: 'PATCH',
           headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
           body: JSON.stringify({ estado: 'cancelada' }),
@@ -497,7 +507,7 @@ Deno.serve(async (req: Request) => {
 
       // Un solo UPDATE mueve la cita: el hueco viejo queda libre en cuanto
       // cambia cita_at, no hay que borrar y volver a crear.
-      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(cita.id)}`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(cita.id)}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ cita_at: citaAt }),
@@ -512,7 +522,7 @@ Deno.serve(async (req: Request) => {
       const desde = String(body.desde || '');
       const hasta = String(body.hasta || '');
       if (isNaN(Date.parse(desde)) || isNaN(Date.parse(hasta))) return json({ error: 'desde y hasta ISO obligatorios' }, 400);
-      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?cita_at=gte.${encodeURIComponent(desde)}&cita_at=lt.${encodeURIComponent(hasta)}&select=id,created_at,cliente_nombre,cliente_telefono,cliente_id,servicio,duracion_min,cita_at,estado,resena_enviada,notas&order=cita_at.asc`;
+      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&cita_at=gte.${encodeURIComponent(desde)}&cita_at=lt.${encodeURIComponent(hasta)}&select=id,created_at,cliente_nombre,cliente_telefono,cliente_id,servicio,duracion_min,cita_at,estado,resena_enviada,notas&order=cita_at.asc`;
       const r = await fetch(url, { headers: REST_HEADERS });
       const rows = await r.json();
       return json({ ok: true, citas: Array.isArray(rows) ? rows : [] });
@@ -523,12 +533,12 @@ Deno.serve(async (req: Request) => {
       const citaId = String(body.cita_id || '');
       const estado = String(body.estado || '');
       if (!citaId || !ESTADOS.includes(estado)) return json({ error: `cita_id y estado valido (${ESTADOS.join('|')})` }, 400);
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(citaId)}&select=id,estado,cliente_nombre,cliente_telefono,servicio,resena_enviada`, { headers: REST_HEADERS });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(citaId)}&select=id,estado,cliente_nombre,cliente_telefono,servicio,resena_enviada`, { headers: REST_HEADERS });
       const rows = await r.json();
       const cita = Array.isArray(rows) ? rows[0] : null;
       if (!cita) return json({ error: 'cita no encontrada' }, 404);
 
-      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(citaId)}`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(citaId)}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
         body: JSON.stringify(estado === 'completada' && !cita.resena_enviada ? { estado, resena_enviada: true } : { estado }),
@@ -548,10 +558,10 @@ Deno.serve(async (req: Request) => {
       const citaId = String(body.cita_id || '');
       const notas = body.notas === null ? null : String(body.notas || '').slice(0, 2000);
       if (!citaId) return json({ error: 'cita_id obligatorio' }, 400);
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(citaId)}&select=id`, { headers: REST_HEADERS });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(citaId)}&select=id`, { headers: REST_HEADERS });
       const rows = await r.json();
       if (!Array.isArray(rows) || !rows[0]) return json({ error: 'cita no encontrada' }, 404);
-      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(citaId)}`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(citaId)}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ notas }),
@@ -565,7 +575,7 @@ Deno.serve(async (req: Request) => {
       const citaId = String(body.cita_id || '');
       const citaAt = String(body.cita_at || '');
       if (!citaId || isNaN(Date.parse(citaAt))) return json({ error: 'cita_id y cita_at ISO obligatorios' }, 400);
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(citaId)}&select=id,cita_at,duracion_min,cliente_nombre,servicio,estado`, { headers: REST_HEADERS });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(citaId)}&select=id,cita_at,duracion_min,cliente_nombre,servicio,estado`, { headers: REST_HEADERS });
       const rows = await r.json();
       const cita = Array.isArray(rows) ? rows[0] : null;
       if (!cita) return json({ error: 'cita no encontrada' }, 404);
@@ -582,7 +592,7 @@ Deno.serve(async (req: Request) => {
       });
       if (choca) return json({ ok: false, reason: 'hueco ocupado, elige otro' });
 
-      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?id=eq.${encodeURIComponent(citaId)}`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(citaId)}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
         body: JSON.stringify({ cita_at: citaAt }),
