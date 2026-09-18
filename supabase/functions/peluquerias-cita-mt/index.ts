@@ -54,7 +54,9 @@ const ACCIONES_PUBLICAS = new Set([
   'huecos', 'reservar', 'buscar-cita', 'comprobar-nombre', 'cancelar-cita', 'reprogramar-cita', 'servicios-list',
 ]);
 const ACCIONES_PANEL = new Set([
-  'agenda', 'estado', 'notas', 'reprogramar', 'config-get', 'config-set', 'clientes', 'cliente-get', 'cliente-set', 'servicio-set',
+  'agenda', 'estado', 'notas', 'reprogramar', 'config-get', 'config-set',
+  'clientes', 'cliente-get', 'cliente-set',
+  'servicio-set', 'servicio-crear', 'servicio-orden',
 ]);
 
 const REST_HEADERS = {
@@ -72,6 +74,7 @@ const DUR_MIN = 15;
 const DUR_MAX = 240;
 const ESTADOS = ['agendada', 'confirmada', 'completada', 'cancelada', 'no_show'];
 const CONFIG_CAMPOS = ['salon_nombre', 'gerente_nombre', 'wa_number', 'gmb_url'];
+const PRECIO_MODOS = ['fijo', 'desde', 'consulta', 'gratis'];
 
 type Tenant = { id: string; chatId: string; esDemo: boolean };
 
@@ -349,34 +352,62 @@ Deno.serve(async (req: Request) => {
       if ('error' in panel) return json({ error: panel.error }, panel.status);
       t = panel.tenant;
     } else {
-      return json({ error: 'action debe ser huecos, reservar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list o servicio-set' }, 400);
+      return json({ error: 'action debe ser huecos, reservar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list o servicio-set, servicio-crear, servicio-orden' }, 400);
     }
 
     // ---- SERVICIOS: catalogo con precios y duraciones ----
     if (action === 'servicios-list') {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&select=id,nombre,duracion_min,precio_eur,activo,orden,updated_at&order=orden.asc`, { headers: REST_HEADERS });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&select=id,nombre,duracion_min,precio_eur,precio_modo,activo,orden,updated_at&order=orden.asc`, { headers: REST_HEADERS });
       const rows = await r.json();
       return json({ ok: true, servicios: Array.isArray(rows) ? rows : [] });
     }
 
-    // ---- SERVICIO: editar precio/duracion/activo (nombre NO editable) ----
+    // ---- SERVICIO: editar nombre/precio/modo/duracion/activo (panel) ----
     if (action === 'servicio-set') {
       const sid = String(body.id || '');
       const campos = body.campos || {};
       if (!sid) return json({ error: 'id obligatorio' }, 400);
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if ('precio_eur' in campos) {
-        const p = Number(campos.precio_eur);
-        if (isNaN(p) || p < 0 || p > 9999) return json({ error: 'precio_eur debe ser un numero entre 0 y 9999' }, 400);
-        patch.precio_eur = Math.round(p * 100) / 100;
+
+      // Renombrar: unico por tenant. NO reescribe citas: citas_peluqueria.servicio
+      // es texto historico (la etiqueta con la que se reservo), no una FK.
+      if ('nombre' in campos) {
+        const nombre = String(campos.nombre || '').trim();
+        if (nombre.length < 1 || nombre.length > 80) return json({ error: 'nombre debe tener entre 1 y 80 caracteres' }, 400);
+        const dup = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&nombre=eq.${encodeURIComponent(nombre)}&id=neq.${encodeURIComponent(sid)}&select=id`, { headers: REST_HEADERS });
+        const dRows = await dup.json();
+        if (Array.isArray(dRows) && dRows[0]) return json({ ok: false, reason: 'ya existe un servicio con ese nombre' });
+        patch.nombre = nombre;
       }
+
       if ('duracion_min' in campos) {
         const d = parseInt(campos.duracion_min, 10);
         if (isNaN(d) || d < DUR_MIN || d > DUR_MAX) return json({ error: `duracion_min debe estar entre ${DUR_MIN} y ${DUR_MAX}` }, 400);
         patch.duracion_min = d;
       }
+
+      // precio_modo manda: consulta/gratis anulan el precio; fijo/desde exigen cifra.
+      if ('precio_modo' in campos) {
+        const modo = String(campos.precio_modo || '');
+        if (!PRECIO_MODOS.includes(modo)) return json({ error: `precio_modo debe ser ${PRECIO_MODOS.join('|')}` }, 400);
+        patch.precio_modo = modo;
+        if (modo === 'consulta' || modo === 'gratis') {
+          patch.precio_eur = null;
+        } else {
+          if (!('precio_eur' in campos)) return json({ error: 'precio_eur obligatorio cuando precio_modo es fijo o desde' }, 400);
+          const p = Number(campos.precio_eur);
+          if (isNaN(p) || p < 0 || p > 9999) return json({ error: 'precio_eur debe ser un numero entre 0 y 9999' }, 400);
+          patch.precio_eur = Math.round(p * 100) / 100;
+        }
+      } else if ('precio_eur' in campos) {
+        const p = Number(campos.precio_eur);
+        if (isNaN(p) || p < 0 || p > 9999) return json({ error: 'precio_eur debe ser un numero entre 0 y 9999' }, 400);
+        patch.precio_eur = Math.round(p * 100) / 100;
+      }
+
       if ('activo' in campos) patch.activo = Boolean(campos.activo);
-      if (Object.keys(patch).length <= 1) return json({ error: 'sin campos validos (precio_eur, duracion_min, activo)' }, 400);
+      if (Object.keys(patch).length <= 1) return json({ error: 'sin campos validos (nombre, precio_modo, precio_eur, duracion_min, activo)' }, 400);
+
       const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&id=eq.${encodeURIComponent(sid)}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
@@ -386,7 +417,67 @@ Deno.serve(async (req: Request) => {
       const s = Array.isArray(rows) ? rows[0] : null;
       if (!s) return json({ error: 'servicio no encontrado' }, 404);
       await log(t, null, 'servicio', `${s.nombre}: ${Object.keys(patch).filter(k => k !== 'updated_at').map(k => `${k}=${(patch as any)[k]}`).join(', ')}`);
-      return json({ ok: true, id: s.id, nombre: s.nombre, precio_eur: s.precio_eur, duracion_min: s.duracion_min, activo: s.activo });
+      return json({ ok: true, servicio: { id: s.id, nombre: s.nombre, precio_modo: s.precio_modo, precio_eur: s.precio_eur, duracion_min: s.duracion_min, activo: s.activo, orden: s.orden } });
+    }
+
+    // ---- SERVICIO: crear (panel) ----
+    if (action === 'servicio-crear') {
+      const campos = body.campos || {};
+      const nombre = String(campos.nombre || '').trim();
+      if (nombre.length < 1 || nombre.length > 80) return json({ error: 'nombre debe tener entre 1 y 80 caracteres' }, 400);
+
+      const d = 'duracion_min' in campos ? parseInt(campos.duracion_min, 10) : 45;
+      if (isNaN(d) || d < DUR_MIN || d > DUR_MAX) return json({ error: `duracion_min debe estar entre ${DUR_MIN} y ${DUR_MAX}` }, 400);
+
+      const modo = 'precio_modo' in campos ? String(campos.precio_modo || '') : 'fijo';
+      if (!PRECIO_MODOS.includes(modo)) return json({ error: `precio_modo debe ser ${PRECIO_MODOS.join('|')}` }, 400);
+      let precio: number | null = null;
+      if (modo === 'fijo' || modo === 'desde') {
+        if (!('precio_eur' in campos)) return json({ error: 'precio_eur obligatorio cuando precio_modo es fijo o desde' }, 400);
+        const p = Number(campos.precio_eur);
+        if (isNaN(p) || p < 0 || p > 9999) return json({ error: 'precio_eur debe ser un numero entre 0 y 9999' }, 400);
+        precio = Math.round(p * 100) / 100;
+      }
+      const activo = 'activo' in campos ? Boolean(campos.activo) : true;
+
+      const dup = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&nombre=eq.${encodeURIComponent(nombre)}&select=id`, { headers: REST_HEADERS });
+      const dRows = await dup.json();
+      if (Array.isArray(dRows) && dRows[0]) return json({ ok: false, reason: 'ya existe un servicio con ese nombre' });
+
+      const ord = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&select=orden&order=orden.desc&limit=1`, { headers: REST_HEADERS });
+      const ordRows = await ord.json();
+      const nuevoOrden = (Array.isArray(ordRows) && ordRows[0] ? Number(ordRows[0].orden) : -1) + 1;
+
+      const ins = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria`, {
+        method: 'POST',
+        headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
+        body: JSON.stringify({ tenant: t.id, nombre, duracion_min: d, precio_modo: modo, precio_eur: precio, activo, orden: nuevoOrden }),
+      });
+      const rows = await ins.json();
+      const s = Array.isArray(rows) ? rows[0] : null;
+      if (!s) return json({ error: 'no se pudo crear el servicio' }, 500);
+      await log(t, null, 'servicio', `Creado: ${nombre} (${modo}${precio !== null ? ' ' + precio + '€' : ''}, ${d} min)`);
+      return json({ ok: true, servicio: { id: s.id, nombre: s.nombre, precio_modo: s.precio_modo, precio_eur: s.precio_eur, duracion_min: s.duracion_min, activo: s.activo, orden: s.orden } });
+    }
+
+    // ---- SERVICIOS: reordenar (panel) ----
+    if (action === 'servicio-orden') {
+      const ids = Array.isArray(body.orden) ? body.orden.map((x: unknown) => String(x)) : null;
+      if (!ids || !ids.length) return json({ error: 'orden debe ser un array de ids' }, 400);
+      if (new Set(ids).size !== ids.length) return json({ error: 'orden con ids repetidos' }, 400);
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&select=id`, { headers: REST_HEADERS });
+      const rows = await r.json();
+      const delTenant = new Set((Array.isArray(rows) ? rows : []).map((x: any) => String(x.id)));
+      if (ids.some((id) => !delTenant.has(id))) return json({ error: 'algun id no pertenece a este salon' }, 400);
+      for (let i = 0; i < ids.length; i++) {
+        await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&id=eq.${encodeURIComponent(ids[i])}`, {
+          method: 'PATCH',
+          headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ orden: i, updated_at: new Date().toISOString() }),
+        });
+      }
+      await log(t, null, 'servicio', `Reordenados ${ids.length} servicios`);
+      return json({ ok: true, orden: ids });
     }
 
     // ---- CONFIG ----
