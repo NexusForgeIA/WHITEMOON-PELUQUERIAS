@@ -10,10 +10,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Dos niveles de acceso:
 //   PÚBLICO (widget de la web, sin login, validado por el token del tenant):
 //     huecos · reservar · buscar-cita · comprobar-nombre · cancelar-cita ·
-//     reprogramar-cita · servicios-list (catálogo de solo lectura, lo usa el chat)
+//     reprogramar-cita · servicios-list (catálogo de solo lectura y solo
+//     activos, lo usa el chat)
 //   PANEL (dueño del salón con sesión de Supabase Auth: JWT en Authorization):
 //     agenda · estado · notas · reprogramar · config-get · config-set ·
-//     clientes · cliente-get · cliente-set · servicio-set
+//     clientes · cliente-get · cliente-set · servicios-admin (catálogo
+//     completo, con inactivos) · servicio-set · servicio-crear · servicio-orden
 //
 // Tenant público: body.token. Token inexistente, repetido o pausado → 403.
 // Sin token se usa la demo (transitorio, hasta que alexia.js mande el token).
@@ -56,7 +58,7 @@ const ACCIONES_PUBLICAS = new Set([
 const ACCIONES_PANEL = new Set([
   'agenda', 'estado', 'notas', 'reprogramar', 'config-get', 'config-set',
   'clientes', 'cliente-get', 'cliente-set',
-  'servicio-set', 'servicio-crear', 'servicio-orden',
+  'servicios-admin', 'servicio-set', 'servicio-crear', 'servicio-orden',
 ]);
 
 const REST_HEADERS = {
@@ -352,12 +354,15 @@ Deno.serve(async (req: Request) => {
       if ('error' in panel) return json({ error: panel.error }, panel.status);
       t = panel.tenant;
     } else {
-      return json({ error: 'action debe ser huecos, reservar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list o servicio-set, servicio-crear, servicio-orden' }, 400);
+      return json({ error: 'action debe ser huecos, reservar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list, servicios-admin, servicio-set, servicio-crear o servicio-orden' }, 400);
     }
 
     // ---- SERVICIOS: catalogo con precios y duraciones ----
-    if (action === 'servicios-list') {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}&select=id,nombre,duracion_min,precio_eur,precio_modo,activo,orden,updated_at&order=orden.asc`, { headers: REST_HEADERS });
+    // servicios-list (publica) solo da los activos: lo archivado no se ofrece.
+    // servicios-admin (panel) da el catalogo completo para poder editarlo.
+    if (action === 'servicios-list' || action === 'servicios-admin') {
+      const soloActivos = action === 'servicios-list' ? '&activo=eq.true' : '';
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${enTenant(t)}${soloActivos}&select=id,nombre,duracion_min,precio_eur,precio_modo,activo,orden,updated_at&order=orden.asc`, { headers: REST_HEADERS });
       const rows = await r.json();
       return json({ ok: true, servicios: Array.isArray(rows) ? rows : [] });
     }

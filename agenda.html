@@ -266,6 +266,8 @@ textarea.ta{min-height:90px;resize:vertical;line-height:1.5}
 .srv-row.dirty .srv-save{display:inline-block}
 .srv-err{flex-basis:100%;color:#fca5a5;font-size:.8rem;margin:0}
 .srv-note{background:rgba(110,193,228,.06);border:1px solid var(--border2);border-radius:12px;padding:13px 16px;margin-top:16px;font-size:.82rem;line-height:1.55;color:var(--muted)}
+.srv-row.archivado{opacity:.62}
+.price-grp .srv-modo{width:auto;text-align:left;cursor:pointer;color-scheme:dark}
 
 /* ===== ESTADÍSTICAS ===== */
 .stat-seg{display:inline-flex;gap:4px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:4px;flex-wrap:wrap;margin-bottom:6px}
@@ -426,8 +428,21 @@ textarea.ta{min-height:90px;resize:vertical;line-height:1.5}
 
 <script>
 // ===== CONFIG =====
-var EDGE_URL = 'https://mlaqtniujnvfxcvcourm.supabase.co/functions/v1/peluquerias-cita';
-var CLAVE = 'aurora2026';
+// Tenant del panel. En la plantilla es la demo: clave de acceso y v9, como
+// siempre. Al clonar, la fábrica pone aquí el token del salón (WM-…) y el panel
+// pasa a login de Supabase Auth contra peluquerias-cita-mt, con el JWT del dueño.
+const TENANT_TOKEN = 'demo-peluquerias';
+var MODO_DEMO = TENANT_TOKEN === 'demo-peluquerias';
+var SUPABASE_URL = 'https://mlaqtniujnvfxcvcourm.supabase.co';
+// Clave publicable (rol anon): solo identifica el proyecto, puede ir en el cliente.
+var SUPABASE_KEY = 'sb_publishable_6no6BuOgiA_2nonTJntAuQ_DTqEgrcV';
+var SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js';
+var EDGE_URL = SUPABASE_URL + '/functions/v1/' + (MODO_DEMO ? 'peluquerias-cita' : 'peluquerias-cita-mt');
+var CLAVE = 'aurora2026';   // solo la demo
+// Catálogo: la demo (v9) solo tiene servicios-list; el salón edita con todo,
+// archivados incluidos.
+var ACC_SERVICIOS = MODO_DEMO ? 'servicios-list' : 'servicios-admin';
+var sb = null;              // cliente supabase-js, solo en modo salón
 var DOW  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 var DOWL = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 var MES  = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -502,11 +517,29 @@ function madridParts(isoStr){
 function citaMinutes(c){ return c._md.min; }
 
 // ===== NET =====
+// En modo salón cada llamada lleva el token del tenant y el JWT de la sesión:
+// la función saca de ahí el salón y comprueba que la cuenta es su dueña.
 async function pelu(payload){
   try{
-    var r=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var headers={'Content-Type':'application/json'}, body=payload;
+    if(!MODO_DEMO){
+      var jwt=await accessToken();
+      if(!jwt){ sesionFuera('Tu sesión ha caducado. Vuelve a entrar.'); return {ok:false,_auth:true}; }
+      headers.Authorization='Bearer '+jwt;
+      body=Object.assign({token:TENANT_TOKEN}, payload);
+    }
+    var r=await fetch(EDGE_URL,{method:'POST',headers:headers,body:JSON.stringify(body)});
+    if(!MODO_DEMO && (r.status===401 || r.status===403)){
+      sesionFuera(r.status===401 ? 'Tu sesión ha caducado. Vuelve a entrar.' : 'Esta cuenta no tiene acceso a este salón.');
+      return {ok:false,_auth:true};
+    }
     return await r.json();
   }catch(e){ return {ok:false,_neterr:true}; }
+}
+async function accessToken(){
+  if(!sb) return '';
+  try{ var s=(await sb.auth.getSession()).data.session; return (s && s.access_token) || ''; }
+  catch(e){ return ''; }
 }
 function toast(msg, kind){
   var t=document.getElementById('toast');
@@ -516,6 +549,7 @@ function toast(msg, kind){
 
 // ===== AUTH =====
 function doLogin(){
+  if(!MODO_DEMO){ loginSalon(); return; }
   var v=document.getElementById('gate-in').value.trim();
   if(v===CLAVE){
     try{ sessionStorage.setItem('pelu_auth','1'); }catch(e){}
@@ -525,8 +559,53 @@ function doLogin(){
   }
 }
 function logout(){
+  if(!MODO_DEMO){ sb.auth.signOut().then(function(){ location.reload(); }); return; }
   try{ sessionStorage.removeItem('pelu_auth'); }catch(e){}
   location.reload();
+}
+
+// ----- modo salón: Supabase Auth -----
+function gateSalon(){
+  var card=document.querySelector('#gate .gate-card');
+  card.querySelector('p').textContent='Acceso del dueño del salón';
+  var pass=document.getElementById('gate-in');
+  pass.insertAdjacentHTML('beforebegin',
+    '<input id="gate-email" type="email" placeholder="Email" autocomplete="username" onkeydown="if(event.key===\'Enter\')doLogin()">');
+  pass.placeholder='Contraseña';
+  pass.autocomplete='current-password';
+  card.querySelector('button').id='gate-btn';
+}
+function cargarSupabase(){
+  return new Promise(function(ok, ko){
+    var sc=document.createElement('script');
+    sc.src=SUPABASE_JS; sc.onload=ok; sc.onerror=ko;
+    document.head.appendChild(sc);
+  });
+}
+async function loginSalon(){
+  var email=document.getElementById('gate-email').value.trim();
+  var pass=document.getElementById('gate-in').value;
+  var err=document.getElementById('gate-err'), btn=document.getElementById('gate-btn');
+  err.textContent='';
+  if(!email || !pass){ err.textContent='Introduce email y contraseña.'; return; }
+  if(!sb){ err.textContent='No se pudo cargar el acceso. Recarga la página.'; return; }
+  btn.disabled=true; btn.textContent='Entrando…';
+  var res=await sb.auth.signInWithPassword({email:email, password:pass});
+  btn.disabled=false; btn.textContent='Entrar';
+  // Mensaje genérico a propósito: no revela si el email existe.
+  if(res.error){ err.textContent='Email o contraseña incorrectos.'; return; }
+  document.getElementById('gate-in').value='';
+  // Antes de enseñar nada: la cuenta tiene que ser dueña de este salón.
+  var chk=await pelu({action:'config-get'});
+  if(chk._auth) return;
+  enter();
+}
+// Sesión caducada o sin acceso: fuera de la app y de vuelta al login.
+function sesionFuera(msg){
+  if(sb) sb.auth.signOut({scope:'local'}).catch(function(){});
+  document.getElementById('app').style.display='none';
+  document.getElementById('gate').classList.remove('hidden');
+  document.getElementById('gate-err').textContent=msg||'';
 }
 function enter(){
   document.getElementById('gate').classList.add('hidden');
@@ -980,13 +1059,14 @@ function byOrden(a,b){ return (a.orden||0)-(b.orden||0) || String(a.nombre).loca
 async function loadServicios(){
   var host=document.getElementById('view-servicios');
   host.innerHTML='<div class="pane"><h2 class="pane-h">Servicios</h2><div class="pac-empty">Cargando servicios…</div></div>';
-  var res=await pelu({action:'servicios-list'});
+  var res=await pelu({action:ACC_SERVICIOS});
+  if(res && res._auth) return;
   if(!res || res._neterr || res.ok===false){
     host.innerHTML='<div class="pane"><h2 class="pane-h">Servicios</h2><div class="pac-empty">No se pudieron cargar los servicios.</div></div>';
     return;
   }
   serviciosCache=(res.servicios||[]).slice().sort(byOrden);
-  renderServicios();
+  if(MODO_DEMO) renderServicios(); else renderEditorServicios();
 }
 function renderServicios(){
   var rows=serviciosCache.map(function(t){
@@ -1063,6 +1143,157 @@ async function srvSave(id){
   }
 }
 
+// ===== EDITOR DE SERVICIOS (modo salón) =====
+// El dueño edita su catálogo: nombre, duración (decide los huecos), precio con
+// modo, activo/archivado y orden. Nada se borra: archivar es activo:false.
+var MODOS_PRECIO=[['fijo','Precio fijo'],['desde','Desde'],['consulta','Consultar'],['gratis','Gratis']];
+function conCifra(modo){ return modo==='fijo' || modo==='desde'; }
+function srvById(id){ return serviciosCache.filter(function(t){ return t.id===id; })[0]; }
+function modoOptions(sel){
+  return MODOS_PRECIO.map(function(m){ return '<option value="'+m[0]+'"'+(m[0]===sel?' selected':'')+'>'+m[1]+'</option>'; }).join('');
+}
+function srvMsg(res, fallback){
+  var m=(res && (res.reason||res.error)) || fallback;
+  return m.charAt(0).toUpperCase()+m.slice(1);
+}
+function renderEditorServicios(){
+  var n=serviciosCache.length;
+  var rows=serviciosCache.map(function(t,i){
+    var id=t.id, modo=t.precio_modo||'fijo';
+    var pre=(t.precio_eur!=null?Number(t.precio_eur).toFixed(2):'');
+    var estado=t.activo ? (t.updated_at?('Modif. '+fmtShort(t.updated_at)):'—') : 'Archivado';
+    return '<div class="srv-row'+(t.activo?'':' archivado')+'" id="srv-row-'+id+'">'+
+      '<div class="price-grp">'+
+        '<button class="step" onclick="srvMover(\''+id+'\',-1)" aria-label="Subir"'+(i===0?' disabled':'')+'>↑</button>'+
+        '<button class="step" onclick="srvMover(\''+id+'\',1)" aria-label="Bajar"'+(i===n-1?' disabled':'')+'>↓</button>'+
+      '</div>'+
+      '<div class="srv-fld srv-name"><label>Nombre</label>'+
+        '<input class="inp" id="srv-nom-'+id+'" maxlength="80" value="'+esc(t.nombre)+'" oninput="srvDirtyEd(\''+id+'\')"></div>'+
+      '<div class="srv-fld"><label>Duración</label>'+
+        '<div class="price-grp"><input class="srv-inp" type="number" inputmode="numeric" min="15" max="240" step="5" id="srv-dur-'+id+'" value="'+t.duracion_min+'" oninput="srvDirtyEd(\''+id+'\')"><span class="srv-upd" style="flex:0;min-width:0">min</span></div></div>'+
+      '<div class="srv-fld"><label>Precio</label>'+
+        '<div class="price-grp">'+
+          '<select class="srv-inp srv-modo" id="srv-modo-'+id+'" onchange="srvModoEd(\''+id+'\')">'+modoOptions(modo)+'</select>'+
+          '<span class="price-grp" id="srv-cifra-'+id+'"'+(conCifra(modo)?'':' style="display:none"')+'>'+
+            '<input class="srv-inp" type="number" inputmode="decimal" min="0" max="9999" step="0.01" id="srv-pre-'+id+'" value="'+pre+'" oninput="srvDirtyEd(\''+id+'\')">'+
+            '<span class="srv-upd" style="flex:0;min-width:0">€</span></span>'+
+        '</div></div>'+
+      '<div class="srv-fld"><label>Activo</label>'+
+        '<label class="sw"><input type="checkbox" id="srv-act-'+id+'" '+(t.activo?'checked':'')+' onchange="srvDirtyEd(\''+id+'\')"><span class="track"></span></label></div>'+
+      '<span class="srv-upd">'+esc(estado)+'</span>'+
+      '<button class="srv-save" id="srv-save-'+id+'" onclick="srvGuardarEd(\''+id+'\')">Guardar</button>'+
+      '<div class="srv-err" id="srv-err-'+id+'"></div>'+
+    '</div>';
+  }).join('');
+  document.getElementById('view-servicios').innerHTML=
+    '<div class="pane">'+
+      '<div class="pane-top"><h2 class="pane-h">Servicios y precios</h2>'+
+        '<button class="btn-prim" onclick="openNuevoServicio()">+ Añadir servicio</button></div>'+
+      '<div class="srv-note" style="margin:0 0 16px"><b>La duración decide los huecos</b> que ofrece el asistente al reservar. Archivar no borra nada: puedes reactivar el servicio cuando quieras.</div>'+
+      '<div class="srv-table">'+(rows||'<div class="pac-empty">Todavía no hay servicios. Añade el primero.</div>')+'</div>'+
+    '</div>';
+}
+// Solo los campos tocados. Si cambia algo del precio van modo y cifra juntos.
+function srvCamposEd(id){
+  var t=srvById(id), c={};
+  if(!t) return c;
+  var nom=val('srv-nom-'+id).trim();
+  if(nom!==t.nombre) c.nombre=nom;
+  var dur=val('srv-dur-'+id).trim();
+  if(dur!==String(t.duracion_min)) c.duracion_min=dur;
+  var modo=val('srv-modo-'+id), pre=val('srv-pre-'+id).trim();
+  var cifraCambia=conCifra(modo) && (pre==='' || t.precio_eur==null || Number(pre)!==Number(t.precio_eur));
+  if(modo!==(t.precio_modo||'fijo') || cifraCambia){
+    c.precio_modo=modo;
+    if(conCifra(modo)) c.precio_eur=pre;
+  }
+  var act=document.getElementById('srv-act-'+id).checked;
+  if(act!==!!t.activo) c.activo=act;
+  return c;
+}
+function srvDirtyEd(id){
+  var row=document.getElementById('srv-row-'+id); if(!row) return;
+  var dirty=Object.keys(srvCamposEd(id)).length>0;
+  row.classList.toggle('dirty', dirty);
+  if(!dirty){ var er=document.getElementById('srv-err-'+id); if(er) er.textContent=''; }
+}
+function srvModoEd(id){
+  document.getElementById('srv-cifra-'+id).style.display=conCifra(val('srv-modo-'+id))?'':'none';
+  srvDirtyEd(id);
+}
+// Valida y convierte a número en el sitio; devuelve el error o ''.
+function srvValidar(c){
+  if('nombre' in c && (c.nombre.length<1 || c.nombre.length>80)) return 'El nombre debe tener entre 1 y 80 caracteres.';
+  if('duracion_min' in c){
+    var d=Number(c.duracion_min);
+    if(c.duracion_min==='' || !Number.isInteger(d) || d<15 || d>240) return 'La duración debe ser un número entero entre 15 y 240 minutos.';
+    c.duracion_min=d;
+  }
+  if('precio_eur' in c){
+    var p=Number(c.precio_eur);
+    if(c.precio_eur==='' || isNaN(p) || p<0 || p>9999) return 'Con precio fijo o "desde" indica una cifra entre 0 y 9999.';
+    c.precio_eur=Math.round(p*100)/100;
+  }
+  return '';
+}
+async function srvGuardarEd(id){
+  var err=document.getElementById('srv-err-'+id), btn=document.getElementById('srv-save-'+id);
+  err.textContent='';
+  var c=srvCamposEd(id);
+  if(!Object.keys(c).length) return;
+  var e=srvValidar(c); if(e){ err.textContent=e; return; }
+  var prev=btn.textContent; btn.disabled=true; btn.textContent='Guardando…';
+  var res=await pelu({action:'servicio-set', id:id, campos:c});
+  btn.disabled=false; btn.textContent=prev;
+  if(res && res._auth) return;
+  if(res && res.ok && !res._neterr){ toast('Servicio guardado','ok'); loadServicios(); }
+  else { err.textContent=srvMsg(res,'No se pudo guardar el servicio'); toast('Revisa los datos del servicio','err'); }
+}
+// La función espera la lista COMPLETA de ids en el orden nuevo.
+async function srvMover(id, delta){
+  if(document.querySelector('#view-servicios .srv-row.dirty')){ toast('Guarda los cambios pendientes antes de reordenar','err'); return; }
+  var ids=serviciosCache.map(function(t){ return t.id; });
+  var i=ids.indexOf(id), j=i+delta;
+  if(i<0 || j<0 || j>=ids.length) return;
+  ids[i]=ids[j]; ids[j]=id;
+  var res=await pelu({action:'servicio-orden', orden:ids});
+  if(res && res._auth) return;
+  if(res && res.ok && !res._neterr) loadServicios();
+  else toast(srvMsg(res,'No se pudo reordenar'),'err');
+}
+function openNuevoServicio(){
+  document.getElementById('modalHost').innerHTML=
+    '<div class="modal-scrim" onclick="closeModalBg(event)">'+
+      '<div class="modal">'+
+        '<div class="modal-head"><h3>Nuevo servicio</h3>'+
+          '<button class="panel-close" onclick="closeModal()" aria-label="Cerrar">×</button></div>'+
+        '<div class="modal-body">'+
+          field('Nombre','<input class="inp" id="ns-nombre" maxlength="80" placeholder="Corte y peinado">')+
+          field('Duración (min)','<input class="inp" id="ns-dur" type="number" inputmode="numeric" min="15" max="240" step="5" value="45">')+
+          field('Precio','<select class="inp" id="ns-modo" style="color-scheme:dark" onchange="nsModo()">'+modoOptions('fijo')+'</select>')+
+          '<div id="ns-cifra">'+field('Importe (€)','<input class="inp" id="ns-pre" type="number" inputmode="decimal" min="0" max="9999" step="0.01">')+'</div>'+
+          '<div class="form-err" id="ns-err"></div>'+
+          '<button class="btn-prim wide" id="ns-save" onclick="crearServicio()">Crear servicio</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  setTimeout(function(){ var e=document.getElementById('ns-nombre'); if(e) e.focus(); }, 60);
+}
+function nsModo(){ document.getElementById('ns-cifra').style.display=conCifra(val('ns-modo'))?'':'none'; }
+async function crearServicio(){
+  var err=document.getElementById('ns-err'); err.textContent='';
+  var modo=val('ns-modo');
+  var c={nombre:val('ns-nombre').trim(), duracion_min:val('ns-dur').trim(), precio_modo:modo};
+  if(conCifra(modo)) c.precio_eur=val('ns-pre').trim();
+  var e=srvValidar(c); if(e){ err.textContent=e; return; }
+  var btn=document.getElementById('ns-save'); var prev=btn.textContent; btn.disabled=true; btn.textContent='Creando…';
+  var res=await pelu({action:'servicio-crear', campos:c});
+  btn.disabled=false; btn.textContent=prev;
+  if(res && res._auth){ closeModal(); return; }
+  if(res && res.ok && !res._neterr){ closeModal(); toast('Servicio creado','ok'); loadServicios(); }
+  else err.textContent=srvMsg(res,'No se pudo crear el servicio');
+}
+
 // ===== ESTADÍSTICAS =====
 var currentStatRange='mes';
 var STAT_LABELS={ mes:'Este mes', mespasado:'Mes pasado', sem4:'Últimas 4 semanas', anio:'Este año' };
@@ -1102,7 +1333,7 @@ async function loadStats(){
   var r=statRange(currentStatRange);
   var reqs=[
     pelu({action:'agenda', desde:r.desde, hasta:r.hasta}),
-    pelu({action:'servicios-list'}),
+    pelu({action:ACC_SERVICIOS}),
     pelu({action:'agenda', desde:'2020-01-01T00:00:00+01:00', hasta:r.desde})
   ];
   var out=await Promise.all(reqs);
@@ -1119,7 +1350,7 @@ async function loadStats(){
 }
 function computeStats(citas, servicios, beforeCitas){
   citas.forEach(function(c){ c._md=madridParts(c.cita_at); });
-  var precio={}; servicios.forEach(function(t){ if(t.nombre!=null) precio[t.nombre]=(t.precio_eur!=null?Number(t.precio_eur):null); });
+  var precio={}; servicios.forEach(function(t){ if(t.nombre!=null) precio[t.nombre]=(t.precio_modo==='gratis'?0:(t.precio_eur!=null?Number(t.precio_eur):null)); });
   var total=citas.length;
   var comp=citas.filter(function(e){ return e.estado==='completada'; });
   var noShow=citas.filter(function(e){ return e.estado==='no_show'; }).length;
@@ -1250,11 +1481,24 @@ function lighten(hex){
 }
 
 // ===== INIT =====
-(function(){
-  var authed=false;
-  try{ authed=sessionStorage.getItem('pelu_auth')==='1'; }catch(e){}
-  if(authed) enter();
-  else document.getElementById('gate-in').focus();
+(async function(){
+  if(MODO_DEMO){
+    var authed=false;
+    try{ authed=sessionStorage.getItem('pelu_auth')==='1'; }catch(e){}
+    if(authed) enter();
+    else document.getElementById('gate-in').focus();
+    return;
+  }
+  gateSalon();
+  try{ await cargarSupabase(); }
+  catch(e){ document.getElementById('gate-err').textContent='No se pudo cargar el acceso. Recarga la página.'; return; }
+  // storageKey propio por salón: en nexusforgeia.github.io todas las webs
+  // comparten origen, y la clave por defecto es la misma que usa el panel CDN.
+  sb=window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:false, storageKey:'wm-agenda-'+TENANT_TOKEN }
+  });
+  if(await accessToken()) enter();
+  else document.getElementById('gate-email').focus();
 })();
 </script>
 </body>
