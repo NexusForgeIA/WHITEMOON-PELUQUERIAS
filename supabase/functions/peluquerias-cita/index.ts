@@ -430,9 +430,9 @@ Deno.serve(async (req: Request) => {
     }
 
     // ---- COMPROBAR NOMBRE (sin tocar nada) ----
-    // Alexia lo llama justo después de pedir el nombre, para no hacer que
-    // alguien elija día y hora y solo entonces enterarse de que el nombre no
-    // cuadra. No revela cuál es el correcto: solo dice sí o no.
+    // Alexia lo llama justo despues de pedir el nombre, para no hacer que
+    // alguien elija dia y hora y solo entonces enterarse de que el nombre no
+    // cuadra. No revela cual es el correcto: solo dice si o no.
     if (action === 'comprobar-nombre') {
       const tn = telClave(String(body.telefono || ''));
       const nombre = String(body.nombre || '').trim();
@@ -560,7 +560,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, cita_id: citaId });
     }
 
-    // ---- REPROGRAMAR ----
+    // ---- REPROGRAMAR (panel) ----
     if (action === 'reprogramar') {
       const citaId = String(body.cita_id || '');
       const citaAt = String(body.cita_at || '');
