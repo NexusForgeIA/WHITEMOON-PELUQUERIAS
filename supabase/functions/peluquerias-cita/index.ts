@@ -1,55 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // peluquerias-cita — backend de la agenda de la demo WhiteMoon · Peluquería Aurora.
-//
-// Cubre huecos, reservas, agenda, estados, notas, reprogramaciones, clientes,
-// servicios y configuración del salón. Es el equivalente de `podo-cita` en la
-// demo de podología, con el vocabulario del sector: cliente y servicio en vez
-// de paciente y tratamiento.
-//
-// Acciones:
-//   huecos · reservar · buscar-cita · comprobar-nombre · cancelar-cita ·
-//   reprogramar-cita · servicios-list · servicio-set · agenda · estado ·
-//   notas · reprogramar · config-get · config-set · clientes · cliente-get ·
-//   cliente-set
-//
-// Las cuatro acciones de autogestión (buscar-cita, comprobar-nombre,
-// cancelar-cita y reprogramar-cita) son las que usa Alexia desde la web y
-// llevan una comprobación ligera de identidad: nunca devuelven el id ni el
-// nombre de la cita, y para tocarla hay que acertar el nombre con el que se
-// reservó. Las acciones sin comprobación (estado, reprogramar) siguen
-// existiendo para el panel agenda.html, pero ya no hay forma de sacar un
-// cita_id desde la web.
-//
-// Solo la demo: todas las lecturas y escrituras van acotadas al tenant
-// 'demo-peluquerias'. Las tablas son multi-tenant (los salones clientes usan
-// peluquerias-cita-mt), y esta función no filtraba: el panel de la demo veía,
-// y podía tocar, datos de otros salones.
-//
-// Canal de avisos: TELEGRAM.
-//
-// Secrets usados (nunca en cliente):
-//   - TELEGRAM_BOT_TOKEN        : token del bot de Telegram (obligatorio)
-//   - TELEGRAM_CHAT_ID          : chat destino; si falta se usa CHAT_ID_FALLBACK
-//   - SUPABASE_URL              : inyectado por la plataforma
-//   - SUPABASE_SERVICE_ROLE_KEY : inyectado por la plataforma
-//
-// Regla del proyecto: si el aviso falla → console.warn, nunca rompe la reserva.
-//
-// Desplegar con:
-//   supabase functions deploy peluquerias-cita --no-verify-jwt --project-ref mlaqtniujnvfxcvcourm
+// v11: + cita-crear (alta manual, bloquea solape) + citas-importar (CSV en bloque, sin bloquear solape). Acotadas al tenant demo.
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const GMB_FALLBACK = 'https://maps.app.goo.gl/3b9zDZrC8uvJfmYt7';
-
-// El chat_id no es un secreto (solo identifica el destino); el token si lo es.
 const CHAT_ID_FALLBACK = '861432965';
-
-// Tenant de la demo: filtro PostgREST de TODAS las consultas y valor de TODOS
-// los INSERT.
 const DEMO_TENANT = 'demo-peluquerias';
 const EN_DEMO = `tenant=eq.${DEMO_TENANT}`;
+const MAX_IMPORT = 200;
 
 const REST_HEADERS = {
   'Content-Type': 'application/json',
@@ -57,11 +17,8 @@ const REST_HEADERS = {
   'Authorization': `Bearer ${SERVICE_KEY}`,
 };
 
-// Horario del salón: mañana y tarde, de lunes a viernes.
 const BLOQUES: Array<[string, string]> = [['10:00', '14:00'], ['16:00', '20:30']];
 const GRANULARIDAD_MIN = 30;
-// Un balayage o unas extensiones pasan de las dos horas: el techo es mayor
-// que en la demo de podología, donde ningún tratamiento superaba los 120 min.
 const DUR_MIN = 15;
 const DUR_MAX = 240;
 const ESTADOS = ['agendada', 'confirmada', 'completada', 'cancelada', 'no_show'];
@@ -69,26 +26,17 @@ const CONFIG_CAMPOS = ['salon_nombre', 'gerente_nombre', 'wa_number', 'gmb_url']
 
 function normTel(t: string): string { return (t || '').replace(/\D/g, ''); }
 
-// Clave de telefono: los ultimos 9 digitos. Quien reserva como "600 123 456"
-// y luego busca su cita como "+34 600123456" es la misma persona, y quedarse
-// con todos los digitos dejaba fuera el prefijo. Espeja la columna generada
-// citas_peluqueria.cliente_telefono_norm.
 function telClave(t: string): string {
   const d = normTel(t);
   return d.length > 9 ? d.slice(-9) : d;
 }
 
-// Nombres para comparar, no para mostrar: sin tildes, sin mayusculas y sin
-// espacios de mas. "JOSÉ  Martín" y "jose martin" son la misma persona.
 function normNombre(n: string): string {
   return (n || '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFD').replace(/\p{M}/gu, '')
     .toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
-// Comprobacion ligera de identidad (demo): vale el nombre completo o solo el
-// de pila, en cualquiera de los dos sentidos. No es autenticacion: evita que
-// alguien con un numero ajeno cancele citas a ciegas, nada mas.
 function mismoNombre(dado: string, guardado: string): boolean {
   const a = normNombre(dado), b = normNombre(guardado);
   if (!a || !b) return false;
@@ -152,9 +100,6 @@ function fmtMadrid(iso: string): string {
   return new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
 }
 
-// La fecha y la hora que ve el cliente se formatean aquí, en hora de Madrid,
-// y no en el navegador: `cita_at` sale de Postgres en UTC y un visitante en
-// otro huso lo pintaría con su hora local. El servidor manda.
 function fmtFechaLarga(iso: string): string {
   return new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
 }
@@ -180,7 +125,6 @@ async function huecosDia(dateStr: string, duracion: number): Promise<string[]> {
   if (!esLaborable(dateStr)) return [];
   const off = madridOffset(dateStr);
   const ocupadas = await citasDelRango(`${dateStr}T00:00:00${off}`, `${dateStr}T23:59:59${off}`);
-  // Margen de una hora: nadie reserva un balayage para dentro de diez minutos.
   const ahora = Date.now() + 60 * 60 * 1000;
   const libres: string[] = [];
   for (const [ini, fin] of BLOQUES) {
@@ -198,8 +142,6 @@ async function huecosDia(dateStr: string, duracion: number): Promise<string[]> {
   return libres;
 }
 
-// Devuelve true solo si Telegram acepto el mensaje, para poder verificar el
-// aviso de punta a punta desde la respuesta de la funcion.
 async function notificarSalon(text: string): Promise<boolean> {
   const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
   const chatId = Deno.env.get('TELEGRAM_CHAT_ID') || CHAT_ID_FALLBACK;
@@ -242,14 +184,12 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const action = String(body.action || '');
 
-    // ---- SERVICIOS: catalogo con precios y duraciones ----
     if (action === 'servicios-list') {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${EN_DEMO}&select=id,nombre,duracion_min,precio_eur,activo,orden,updated_at&order=orden.asc`, { headers: REST_HEADERS });
       const rows = await r.json();
       return json({ ok: true, servicios: Array.isArray(rows) ? rows : [] });
     }
 
-    // ---- SERVICIO: editar precio/duracion/activo (nombre NO editable) ----
     if (action === 'servicio-set') {
       const sid = String(body.id || '');
       const campos = body.campos || {};
@@ -279,7 +219,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, id: s.id, nombre: s.nombre, precio_eur: s.precio_eur, duracion_min: s.duracion_min, activo: s.activo });
     }
 
-    // ---- CONFIG ----
     if (action === 'config-get') {
       const cfg = await getConfig();
       return json({ ok: true, config: { salon_nombre: cfg.salon_nombre, gerente_nombre: cfg.gerente_nombre, wa_number: cfg.wa_number, gmb_url: cfg.gmb_url, updated_at: cfg.updated_at } });
@@ -302,7 +241,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
-    // ---- CLIENTES ----
     if (action === 'clientes') {
       const q = String(body.q || '').trim();
       let filtro = '';
@@ -366,7 +304,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, cliente_id: c.id });
     }
 
-    // ---- HUECOS ----
     if (action === 'huecos') {
       const dia = String(body.dia || '');
       const duracion = clampDur(body.duracion_min);
@@ -374,7 +311,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, dia, duracion_min: duracion, huecos: await huecosDia(dia, duracion) });
     }
 
-    // ---- RESERVAR ----
     if (action === 'reservar') {
       const nombre = String(body.cliente_nombre || '').slice(0, 120);
       const telefono = String(body.cliente_telefono || '').slice(0, 30);
@@ -410,11 +346,77 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, cita_id: cita.id, cita_at: citaAt, cuando: fmtMadrid(citaAt), fecha: fmtFechaLarga(citaAt), hora: fmtHoraMadrid(citaAt), dia: fmtDiaISO(citaAt), notified });
     }
 
-    // ---- BUSCAR CITA POR TELEFONO (autogestion desde la web) ----
-    // Devuelve la proxima cita viva de ese telefono. A proposito NO devuelve
-    // ni el id ni el nombre: el id abriria la puerta a `estado`/`reprogramar`,
-    // que no comprueban nada, y el nombre es justo lo que se pide despues para
-    // confirmar que la cita es tuya.
+    // ---- CITA-CREAR (panel demo, alta manual): opcion A, bloquea si solapa ----
+    if (action === 'cita-crear') {
+      const nombre = String(body.cliente_nombre || '').slice(0, 120).trim();
+      const telefono = String(body.cliente_telefono || '').slice(0, 30).trim();
+      const servicio = String(body.servicio || '').slice(0, 80).trim();
+      const duracion = clampDur(body.duracion_min);
+      const citaAt = String(body.cita_at || '');
+      const estado = body.estado ? String(body.estado) : 'agendada';
+      const notas = (body.notas === undefined || body.notas === null) ? null : String(body.notas).slice(0, 2000);
+      if (!nombre || telClave(telefono).length < 9 || !servicio || isNaN(Date.parse(citaAt))) {
+        return json({ error: 'cliente_nombre, cliente_telefono (min 9 digitos), servicio y cita_at ISO obligatorios' }, 400);
+      }
+      if (!ESTADOS.includes(estado)) return json({ error: `estado debe ser ${ESTADOS.join('|')}` }, 400);
+      const ini = Date.parse(citaAt);
+      const fin = ini + duracion * 60000;
+      const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(citaAt));
+      const off = madridOffset(dia);
+      const ocupadas = await citasDelRango(`${dia}T00:00:00${off}`, `${dia}T23:59:59${off}`);
+      const choca = ocupadas.some((c: any) => {
+        const cIni = Date.parse(c.cita_at);
+        return seSolapan(ini, fin, cIni, cIni + (c.duracion_min || 45) * 60000);
+      });
+      if (choca) return json({ ok: false, reason: 'hueco-ocupado' });
+      const clienteId = await resolverCliente(nombre, telefono);
+      const ins = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria`, {
+        method: 'POST',
+        headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
+        body: JSON.stringify({ tenant: DEMO_TENANT, cliente_nombre: nombre, cliente_telefono: telefono, servicio, duracion_min: duracion, cita_at: citaAt, estado, notas, cliente_id: clienteId, origen: 'manual' }),
+      });
+      const rows = await ins.json();
+      const cita = Array.isArray(rows) ? rows[0] : null;
+      if (!cita) return json({ error: 'no se pudo crear la cita' }, 500);
+      await log(cita.id, 'alta-manual', `${servicio} ${citaAt} (${nombre})`);
+      return json({ ok: true, cita_id: cita.id, cita_at: citaAt, cuando: fmtMadrid(citaAt), fecha: fmtFechaLarga(citaAt), hora: fmtHoraMadrid(citaAt), dia: fmtDiaISO(citaAt) });
+    }
+
+    // ---- CITAS-IMPORTAR (panel demo, CSV en bloque): carga tal cual, NO bloquea por solape ----
+    if (action === 'citas-importar') {
+      const filas = Array.isArray(body.filas) ? body.filas : null;
+      if (!filas || !filas.length) return json({ error: 'filas debe ser un array no vacio' }, 400);
+      if (filas.length > MAX_IMPORT) return json({ error: `maximo ${MAX_IMPORT} filas por lote; divide el CSV en trozos` }, 400);
+      const errores: Array<{ fila: number; motivo: string }> = [];
+      let creadas = 0;
+      for (let i = 0; i < filas.length; i++) {
+        const f = filas[i] || {};
+        const nombre = String(f.cliente_nombre || '').slice(0, 120).trim();
+        const telefono = String(f.cliente_telefono || '').slice(0, 30).trim();
+        const servicio = String(f.servicio || '').slice(0, 80).trim();
+        const citaAt = String(f.cita_at || '');
+        const duracion = clampDur(f.duracion_min);
+        const estado = f.estado ? String(f.estado) : 'agendada';
+        const notas = (f.notas === undefined || f.notas === null || f.notas === '') ? null : String(f.notas).slice(0, 2000);
+        if (!nombre || telClave(telefono).length < 9 || !servicio || isNaN(Date.parse(citaAt))) { errores.push({ fila: i + 1, motivo: 'faltan datos o cita_at invalido' }); continue; }
+        if (!ESTADOS.includes(estado)) { errores.push({ fila: i + 1, motivo: `estado invalido (${ESTADOS.join('|')})` }); continue; }
+        try {
+          const clienteId = await resolverCliente(nombre, telefono);
+          const ins = await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria`, {
+            method: 'POST',
+            headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
+            body: JSON.stringify({ tenant: DEMO_TENANT, cliente_nombre: nombre, cliente_telefono: telefono, servicio, duracion_min: duracion, cita_at: citaAt, estado, notas, cliente_id: clienteId, origen: 'importado' }),
+          });
+          const rows = await ins.json();
+          if (Array.isArray(rows) && rows[0]) creadas++; else errores.push({ fila: i + 1, motivo: 'insert fallido' });
+        } catch (_) {
+          errores.push({ fila: i + 1, motivo: 'error interno en la fila' });
+        }
+      }
+      await log(null, 'importacion', `Importadas ${creadas}/${filas.length}${errores.length ? `, ${errores.length} errores` : ''}`);
+      return json({ ok: true, creadas, total: filas.length, errores });
+    }
+
     if (action === 'buscar-cita') {
       const tn = telClave(String(body.telefono || ''));
       if (tn.length < 9) return json({ error: 'telefono de al menos 9 digitos obligatorio' }, 400);
@@ -424,25 +426,9 @@ Deno.serve(async (req: Request) => {
       const rows = await r.json();
       const cita = Array.isArray(rows) ? rows[0] : null;
       if (!cita) return json({ ok: true, encontrada: false });
-      return json({
-        ok: true,
-        encontrada: true,
-        cita: {
-          servicio: cita.servicio,
-          duracion_min: cita.duracion_min,
-          cita_at: cita.cita_at,
-          cuando: fmtMadrid(cita.cita_at),
-          fecha: fmtFechaLarga(cita.cita_at),
-          hora: fmtHoraMadrid(cita.cita_at),
-          dia: fmtDiaISO(cita.cita_at),
-        },
-      });
+      return json({ ok: true, encontrada: true, cita: { servicio: cita.servicio, duracion_min: cita.duracion_min, cita_at: cita.cita_at, cuando: fmtMadrid(cita.cita_at), fecha: fmtFechaLarga(cita.cita_at), hora: fmtHoraMadrid(cita.cita_at), dia: fmtDiaISO(cita.cita_at) } });
     }
 
-    // ---- COMPROBAR NOMBRE (sin tocar nada) ----
-    // Alexia lo llama justo despues de pedir el nombre, para no hacer que
-    // alguien elija dia y hora y solo entonces enterarse de que el nombre no
-    // cuadra. No revela cual es el correcto: solo dice si o no.
     if (action === 'comprobar-nombre') {
       const tn = telClave(String(body.telefono || ''));
       const nombre = String(body.nombre || '').trim();
@@ -457,9 +443,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, coincide: mismoNombre(nombre, cita.cliente_nombre) });
     }
 
-    // ---- CANCELAR / REPROGRAMAR LA PROPIA CITA ----
-    // Ambas resuelven la cita por telefono en el servidor y exigen acertar el
-    // nombre. Nunca reciben un cita_id de fuera.
     if (action === 'cancelar-cita' || action === 'reprogramar-cita') {
       const tn = telClave(String(body.telefono || ''));
       const nombre = String(body.nombre || '').trim();
@@ -487,7 +470,6 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true, cancelada: true, servicio: cita.servicio, cuando: fmtMadrid(cita.cita_at), fecha: fmtFechaLarga(cita.cita_at), hora: fmtHoraMadrid(cita.cita_at), notified });
       }
 
-      // reprogramar-cita
       const citaAt = String(body.cita_at || '');
       if (isNaN(Date.parse(citaAt))) return json({ error: 'cita_at ISO obligatorio' }, 400);
       const duracion = cita.duracion_min || 45;
@@ -496,8 +478,6 @@ Deno.serve(async (req: Request) => {
       const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(citaAt));
       if (!esLaborable(dia)) return json({ ok: false, reason: 'dia-cerrado' });
       const off = madridOffset(dia);
-      // Se excluye la propia cita: mover de 11:00 a 11:30 no puede chocar
-      // consigo misma.
       const ocupadas = (await citasDelRango(`${dia}T00:00:00${off}`, `${dia}T23:59:59${off}`)).filter((c: any) => c.id !== cita.id);
       const choca = ocupadas.some((c: any) => {
         const cIni = Date.parse(c.cita_at);
@@ -505,8 +485,6 @@ Deno.serve(async (req: Request) => {
       });
       if (choca) return json({ ok: false, reason: 'hueco-ocupado' });
 
-      // Un solo UPDATE mueve la cita: el hueco viejo queda libre en cuanto
-      // cambia cita_at, no hay que borrar y volver a crear.
       await fetch(`${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(cita.id)}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=minimal' },
@@ -517,18 +495,16 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, reprogramada: true, servicio: cita.servicio, antes: fmtMadrid(cita.cita_at), cuando: fmtMadrid(citaAt), cita_at: citaAt, fecha: fmtFechaLarga(citaAt), hora: fmtHoraMadrid(citaAt), dia: fmtDiaISO(citaAt), notified });
     }
 
-    // ---- AGENDA ----
     if (action === 'agenda') {
       const desde = String(body.desde || '');
       const hasta = String(body.hasta || '');
       if (isNaN(Date.parse(desde)) || isNaN(Date.parse(hasta))) return json({ error: 'desde y hasta ISO obligatorios' }, 400);
-      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&cita_at=gte.${encodeURIComponent(desde)}&cita_at=lt.${encodeURIComponent(hasta)}&select=id,created_at,cliente_nombre,cliente_telefono,cliente_id,servicio,duracion_min,cita_at,estado,resena_enviada,notas&order=cita_at.asc`;
+      const url = `${SUPABASE_URL}/rest/v1/citas_peluqueria?${EN_DEMO}&cita_at=gte.${encodeURIComponent(desde)}&cita_at=lt.${encodeURIComponent(hasta)}&select=id,created_at,cliente_nombre,cliente_telefono,cliente_id,servicio,duracion_min,cita_at,estado,resena_enviada,notas,origen&order=cita_at.asc`;
       const r = await fetch(url, { headers: REST_HEADERS });
       const rows = await r.json();
       return json({ ok: true, citas: Array.isArray(rows) ? rows : [] });
     }
 
-    // ---- ESTADO ----
     if (action === 'estado') {
       const citaId = String(body.cita_id || '');
       const estado = String(body.estado || '');
@@ -553,7 +529,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, cita_id: citaId, estado });
     }
 
-    // ---- NOTAS DE CITA ----
     if (action === 'notas') {
       const citaId = String(body.cita_id || '');
       const notas = body.notas === null ? null : String(body.notas || '').slice(0, 2000);
@@ -570,7 +545,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, cita_id: citaId });
     }
 
-    // ---- REPROGRAMAR (panel) ----
     if (action === 'reprogramar') {
       const citaId = String(body.cita_id || '');
       const citaAt = String(body.cita_at || '');
@@ -602,7 +576,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, cita_id: citaId, cita_at: citaAt, cuando: fmtMadrid(citaAt) });
     }
 
-    return json({ error: 'action debe ser huecos, reservar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list o servicio-set' }, 400);
+    return json({ error: 'action debe ser huecos, reservar, cita-crear, citas-importar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list o servicio-set' }, 400);
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
