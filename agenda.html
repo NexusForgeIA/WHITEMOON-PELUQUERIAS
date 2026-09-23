@@ -149,6 +149,7 @@ button{font-family:inherit}
 .act.resena{display:block;width:100%;margin-top:14px;text-align:center;text-decoration:none;font-family:inherit}
 .act.resena:not(:disabled):hover{background:rgba(16,185,129,.16);border-color:var(--confirmada);color:#6ee7b7}
 .resena-aviso{font-size:.76rem;color:var(--muted);margin-top:6px}
+.resena-copiar{display:block;margin:6px auto 0;background:none;border:none;padding:2px 4px;color:#a9dcf2;font-size:.76rem;font-family:inherit;text-decoration:underline;cursor:pointer}
 .repro-box{margin-top:18px;border-top:1px solid var(--border);padding-top:18px}
 .repro-box .rt{font-size:.82rem;color:var(--muted);margin-bottom:10px}
 .rchips{display:flex;flex-wrap:wrap;gap:8px}
@@ -841,8 +842,9 @@ function pedirCancelar(){
 function verPaso(){ document.getElementById('reproBox').scrollIntoView({block:'nearest', behavior:'smooth'}); }
 
 // ===== RESEÑA (plantilla A) =====
-// Demo: solo previsualiza el copy (ni wa.me ni teléfono). Salón: abre WhatsApp
-// del gerente con el texto puesto; lo envía él.
+// Abre WhatsApp con el texto puesto; wa.me nunca envía solo, pulsa enviar una
+// persona. Demo: sin número (WhatsApp deja elegir contacto) + "copiar texto".
+// Salón: al teléfono del cliente.
 var PLANTILLA_RESENA='¡Hola {nombre}! 😊 Somos {salon}. Esperamos que te haya encantado el resultado. Si tienes 1 minuto, nos ayudarías muchísimo dejándonos tu opinión aquí 👉 {link} ¡Gracias por confiar en nosotras! 💛';
 async function configResena(){
   if(!configCache){ var r=await pelu({action:'config-get'}); if(r && r.ok) configCache=r.config||{}; }
@@ -856,7 +858,7 @@ async function pintarResena(hostId, nombre, telefono){
   var host=document.getElementById(hostId); if(!host) return;
   var cfg=await configResena();
   if(!host.isConnected) return; // el panel/ficha cambió mientras cargaba
-  var label=MODO_DEMO ? 'Ver copy de reseña' : 'Pedir reseña';
+  var label='Pedir reseña';
   var tel=String(telefono||'').replace(/\D/g,'').slice(-9);
   var falta = !(cfg.gmb_url||'').trim() ? 'Configura el enlace de reseñas en Perfil'
     : !(cfg.salon_nombre||'').trim() ? 'Configura el nombre del salón en Perfil'
@@ -866,31 +868,20 @@ async function pintarResena(hostId, nombre, telefono){
     return;
   }
   var txt=copyResena(nombre, cfg);
-  if(MODO_DEMO){
-    host.innerHTML='<button class="act resena">⭐ '+label+'</button>';
-    host.firstChild.onclick=function(){ verCopyResena(txt); };
-    return;
-  }
-  host.innerHTML='<a class="act resena" target="_blank" rel="noopener" href="https://wa.me/34'+tel+'?text='+encodeURIComponent(txt)+'">⭐ '+label+'</a>';
+  var dest=MODO_DEMO ? '' : '34'+tel;
+  host.innerHTML='<a class="act resena" target="_blank" rel="noopener" href="https://wa.me/'+dest+'?text='+encodeURIComponent(txt)+'">⭐ '+label+'</a>'+
+    (MODO_DEMO ? '<button class="resena-copiar">copiar texto</button>' : '');
+  if(MODO_DEMO) host.querySelector('.resena-copiar').onclick=function(){ copiarResena(txt); };
 }
-function verCopyResena(txt){
-  document.getElementById('modalHost').innerHTML=
-    '<div class="modal-scrim" onclick="closeModalBg(event)">'+
-      '<div class="modal">'+
-        '<div class="modal-head"><h3>Copy de reseña</h3>'+
-          '<button class="panel-close" onclick="closeModal()" aria-label="Cerrar">×</button></div>'+
-        '<div class="modal-body">'+
-          '<textarea class="inp ta" id="rs-txt" readonly rows="7">'+esc(txt)+'</textarea>'+
-          '<button class="btn-prim wide" onclick="copiarResena()">Copiar al portapapeles</button>'+
-        '</div>'+
-      '</div>'+
-    '</div>';
-}
-function copiarResena(){
-  var ta=document.getElementById('rs-txt'); if(!ta) return;
+function copiarResena(txt){
   var ok=function(){ toast('Copiado al portapapeles','ok'); };
-  var viejo=function(){ ta.select(); try{ document.execCommand('copy'); ok(); }catch(e){ toast('Selecciona el texto y cópialo','err'); } };
-  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(ok, viejo);
+  var viejo=function(){
+    var ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); ok(); }catch(e){ toast('No se pudo copiar','err'); }
+    ta.remove();
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, viejo);
   else viejo();
 }
 
