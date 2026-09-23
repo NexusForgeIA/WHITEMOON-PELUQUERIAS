@@ -842,9 +842,11 @@ function pedirCancelar(){
 function verPaso(){ document.getElementById('reproBox').scrollIntoView({block:'nearest', behavior:'smooth'}); }
 
 // ===== RESEÑA (plantilla A) =====
-// Abre WhatsApp con el texto puesto; wa.me nunca envía solo, pulsa enviar una
+// Abre WhatsApp con el texto puesto; nunca envía solo, pulsa enviar una
 // persona. Demo: sin número (WhatsApp deja elegir contacto) + "copiar texto".
 // Salón: al teléfono del cliente.
+// api.whatsapp.com/send y no wa.me: la redirección de wa.me cambia cada emoji
+// por U+FFFD (carácter de reemplazo); el destino directo los conserva.
 var PLANTILLA_RESENA='¡Hola {nombre}! 😊 Somos {salon}. Esperamos que te haya encantado el resultado. Si tienes 1 minuto, nos ayudarías muchísimo dejándonos tu opinión aquí 👉 {link} ¡Gracias por confiar en nosotras! 💛';
 async function configResena(){
   if(!configCache){ var r=await pelu({action:'config-get'}); if(r && r.ok) configCache=r.config||{}; }
@@ -868,8 +870,8 @@ async function pintarResena(hostId, nombre, telefono){
     return;
   }
   var txt=copyResena(nombre, cfg);
-  var dest=MODO_DEMO ? '' : '34'+tel;
-  host.innerHTML='<a class="act resena" target="_blank" rel="noopener" href="https://wa.me/'+dest+'?text='+encodeURIComponent(txt)+'">⭐ '+label+'</a>'+
+  var dest=MODO_DEMO ? '' : 'phone=34'+tel+'&';
+  host.innerHTML='<a class="act resena" target="_blank" rel="noopener" href="https://api.whatsapp.com/send?'+dest+'text='+encodeURIComponent(txt)+'">⭐ '+label+'</a>'+
     (MODO_DEMO ? '<button class="resena-copiar">copiar texto</button>' : '');
   if(MODO_DEMO) host.querySelector('.resena-copiar').onclick=function(){ copiarResena(txt); };
 }
