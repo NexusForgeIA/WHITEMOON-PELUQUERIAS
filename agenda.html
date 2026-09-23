@@ -820,7 +820,7 @@ async function act(estado){
   if(!current) return;
   var res=await pelu({action:'estado', cita_id:current.id, estado:estado});
   if(res && res.ok && !res._neterr){
-    var msg = estado==='completada' ? 'Cita completada · reseña enviada'
+    var msg = estado==='completada' ? 'Cita completada · reseña gestionada'
       : estado==='cancelada' ? 'Cita cancelada · el hueco queda libre'
       : 'Cita marcada como '+estadoInfo(estado).label.toLowerCase();
     toast(msg,'ok'); closePanel(); await loadWeek();
@@ -1300,7 +1300,7 @@ function renderFicha(p, hist){
     return '<div class="hist-row" style="border-left-color:'+info.c+'">'+
       '<div class="hist-top"><span class="hist-when">'+when+'</span>'+
         '<span class="pill" style="position:static;margin:0;background:'+hexA(info.c,.16)+';color:'+lighten(info.c)+'">'+info.label+'</span></div>'+
-      '<div class="hist-mid">'+esc(h.servicio||'—')+' · '+(h.duracion_min||30)+' min'+(h.resena_enviada?' · reseña ✓':'')+'</div>'+
+      '<div class="hist-mid">'+esc(h.servicio||'—')+' · '+(h.duracion_min||30)+' min'+(h.resena_enviada?' · reseña gestionada':'')+'</div>'+
       (hasNotas(h)?'<div class="hist-nota">📝 '+esc(h.notas)+'</div>':'')+
     '</div>';
   }).join('') : '<div class="pac-empty">Sin citas registradas</div>';
