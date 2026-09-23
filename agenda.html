@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <title>Agenda · Peluquería Aurora</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -362,6 +362,65 @@ textarea.ta{min-height:90px;resize:vertical;line-height:1.5}
   .pat-split{grid-template-columns:1fr}
   .st-hist{height:150px}
   .hcol{flex:1 0 13px}
+}
+
+/* ===== MÓVIL: solo colocación y tamaño de toque; el escritorio no cambia ===== */
+/* Notch (viewport-fit=cover): en escritorio env() vale 0. */
+body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+.panel{padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom)}
+
+@media(max-width:900px){
+  /* Tamaño de dedo */
+  .tab,.wbtn,.logout,.btn-prim,.seg-btn,.back,.rchip{min-height:44px}
+  .panel-close{width:44px;height:44px}
+}
+@media(max-width:600px){
+  /* En móvil la barra ocupa casi media pantalla: se va con el scroll en vez de quedarse fija */
+  .top{position:relative;padding-top:max(12px, env(safe-area-inset-top))}
+  .logout{margin-left:auto}
+  /* Pestañas: a todo el ancho y en dos filas si no caben (antes, 504 px en una) */
+  .tabs{flex:1 1 100%;flex-wrap:wrap}
+  .tab{flex:1 1 auto;padding:10px 12px}
+  /* Semana y acciones: cada grupo en su fila, botones repartidos */
+  .weeknav{gap:10px}
+  .wbtns,.wacts{flex:1 1 100%;margin-left:0}
+  .wbtns .wbtn,.wacts>*{flex:1;justify-content:center}
+  .wbtns .wbtn.now{flex:2}
+  /* Fila de cita: hora · cliente · estado arriba, Mover/Cancelar debajo */
+  .lrow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"lt li pill" "qa qa qa";gap:10px 12px}
+  .lrow .lt{grid-area:lt}
+  .lrow .li{grid-area:li;min-width:0}
+  .lrow .pill{grid-area:pill;margin-left:0}
+  .lrow .qa{grid-area:qa;margin-left:0}
+  .lrow .qb{flex:1;min-height:40px;font-size:.8rem;border-radius:10px}
+  .panel-head{padding-top:max(20px, env(safe-area-inset-top))}
+  .back{display:inline-flex;align-items:center}
+  /* Servicios: campos apilados y a todo el ancho */
+  .srv-row{flex-direction:column;align-items:stretch;gap:12px}
+  .srv-row>*{flex:0 0 auto}
+  .srv-row>.price-grp{align-self:flex-start}
+  .srv-fld .price-grp{display:flex;width:100%}
+  .srv-inp,.price-grp .srv-inp{flex:1;width:100%;min-height:44px}
+  .step{width:44px;height:44px}
+  .srv-upd{text-align:left}
+  .srv-save{width:100%;min-height:44px}
+  /* Modales: casi pantalla completa, scroll dentro, botón de acción siempre a la vista */
+  .modal-scrim{padding:max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom))}
+  .modal{max-width:none;max-height:100%;display:flex;flex-direction:column}
+  .modal-head{padding:12px 16px}
+  .modal-body,.modal.tall .modal-body{flex:1;min-height:0;max-height:none;overflow-y:auto}
+  .modal-body>.btn-prim.wide:last-child{position:sticky;bottom:0;box-shadow:0 -16px 16px var(--bg2)}
+  .fld-2{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+  .fld-2 .inp{min-width:0}
+  /* 16 px: por debajo, iOS hace zoom al escribir */
+  input:not([type=checkbox]),select,textarea{font-size:16px}
+  .inp{min-height:44px}
+  /* Estadísticas: el histograma se desplaza dentro de su tarjeta */
+  .stat-card{min-width:0;overflow:hidden}
+  .stat-seg{display:flex}
+  .seg-btn{flex:1 1 auto}
+  .wrap,.pane{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
+  #toast{bottom:calc(24px + env(safe-area-inset-bottom));max-width:calc(100vw - 32px)}
 }
 </style>
 </head>
