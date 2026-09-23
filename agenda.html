@@ -239,6 +239,11 @@ textarea.ta{min-height:90px;resize:vertical;line-height:1.5}
 .modal-head h3{font-size:1.1rem;font-weight:700}
 .modal-body{padding:20px}
 .modal.tall .modal-body{max-height:calc(100dvh - 110px);overflow-y:auto}
+.fld-hint{font-size:.8rem;color:var(--muted)}
+.fld-hint b{color:var(--text)}
+.csv-res{font-size:1.05rem;font-weight:700;margin-bottom:10px}
+.csv-errs{max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:11px;padding:10px 13px;font-size:.82rem;line-height:1.6;color:#fca5a5}
+.csv-errs b{color:var(--text)}
 .fld-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .modal select.inp,.modal input.inp{color-scheme:dark}
 
@@ -398,6 +403,7 @@ textarea.ta{min-height:90px;resize:vertical;line-height:1.5}
         <button class="wbtn" onclick="shiftWeek(1)"><span>Siguiente</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
       </div>
       <div class="wacts">
+        <button class="wbtn" onclick="openImportarCSV()">Importar CSV</button>
         <button class="btn-prim" onclick="openNuevaCita()">+ Añadir cita</button>
       </div>
     </div>
@@ -931,6 +937,128 @@ async function crearCita(){
   if(res && res.reason==='hueco-ocupado'){ err.textContent='Ya hay una cita a esa hora.'; toast('Ya hay una cita a esa hora','err'); return; }
   if(res && res._neterr){ err.textContent='Error de conexión. Inténtalo de nuevo.'; return; }
   err.textContent=(res && (res.error||res.reason)) || 'No se pudo añadir la cita';
+}
+
+// ===== IMPORTAR CSV =====
+// Migración tal cual: el backend (citas-importar) NO bloquea solapes ni
+// de-duplica. Lotes de ≤200 filas. "Fila N" = número de fila del archivo
+// (la cabecera es la 1), como lo ve el dueño en Excel.
+var CSV_OBLIG=['fecha','hora','nombre','telefono','servicio'];
+var CSV_LOTE=200;
+var csvPend=null;
+function openImportarCSV(){
+  csvPend=null;
+  document.getElementById('modalHost').innerHTML=
+    '<div class="modal-scrim" onclick="closeModalBg(event)">'+
+      '<div class="modal tall">'+
+        '<div class="modal-head"><h3>Importar citas (CSV)</h3>'+
+          '<button class="panel-close" onclick="closeModal()" aria-label="Cerrar">×</button></div>'+
+        '<div class="modal-body" id="csv-body">'+
+          '<div class="srv-note" style="margin:0 0 16px">Columnas: <b>fecha</b> (AAAA-MM-DD), <b>hora</b> (HH:MM), <b>nombre</b>, <b>telefono</b>, <b>servicio</b> y, opcionales, <b>duracion_min</b>, <b>estado</b>, <b>notas</b>. '+
+            '<a href="ejemplo-citas.csv" download style="color:#a9dcf2">Descargar ejemplo</a></div>'+
+          '<div class="srv-note" style="margin:0 0 16px"><b>Si importas el mismo archivo dos veces, se duplican las citas.</b> Las citas se cargan tal cual, aunque se solapen con otras.</div>'+
+          field('Archivo','<input class="inp" id="csv-file" type="file" accept=".csv,text/csv" onchange="csvElegido(this)">')+
+          '<div class="form-err" id="csv-err"></div>'+
+          '<div id="csv-step"></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+// CSV con comillas ("" escapa), separador , o ; (Excel en español) y BOM.
+// Devuelve registros no vacíos con la fila del archivo donde empiezan.
+function parseCSV(txt){
+  txt=txt.replace(/^﻿/,'');
+  var cab=txt.split(/\r?\n/,1)[0];
+  var sep=cab.split(';').length>cab.split(',').length ? ';' : ',';
+  var out=[], cells=[], f='', q=false, fila=1, inicio=1;
+  function cerrar(){ cells.push(f); f=''; if(cells.some(function(c){ return c.trim()!==''; })) out.push({fila:inicio, cells:cells}); cells=[]; }
+  for(var i=0;i<txt.length;i++){
+    var ch=txt[i];
+    if(q){
+      if(ch==='"'){ if(txt[i+1]==='"'){ f+='"'; i++; } else q=false; }
+      else { if(ch==='\n') fila++; f+=ch; }
+    }
+    else if(ch==='"') q=true;
+    else if(ch===sep){ cells.push(f); f=''; }
+    else if(ch==='\n' || ch==='\r'){
+      if(ch==='\r' && txt[i+1]==='\n') i++;
+      cerrar(); fila++; inicio=fila;
+    }
+    else f+=ch;
+  }
+  if(f!=='' || cells.length) cerrar();
+  return out;
+}
+async function csvElegido(inp){
+  var err=document.getElementById('csv-err'), step=document.getElementById('csv-step');
+  err.textContent=''; step.innerHTML=''; csvPend=null;
+  var file=inp.files && inp.files[0]; if(!file) return;
+  if(file.size>2*1024*1024){ err.textContent='El archivo pasa de 2 MB. Divídelo en varios.'; return; }
+  var recs=parseCSV(await file.text());
+  if(recs.length<2){ err.textContent='El archivo no tiene filas de citas (la primera fila es la cabecera).'; return; }
+  var idx={};
+  recs[0].cells.forEach(function(c,i){ idx[c.trim().toLowerCase()]=i; });
+  var faltan=CSV_OBLIG.filter(function(k){ return !(k in idx); });
+  if(faltan.length){ err.textContent='Faltan columnas en la cabecera: '+faltan.join(', ')+'.'; return; }
+  // Sin duracion_min en la fila → la del servicio en el catálogo (si no, el backend pone 45).
+  var cat=await catalogoActivo(), durDe={};
+  (cat||[]).forEach(function(t){ durDe[t.nombre.trim().toLowerCase()]=t.duracion_min; });
+  var validas=[], errores=[];
+  recs.slice(1).forEach(function(r){
+    function col(k){ return k in idx ? String(r.cells[idx[k]]||'').trim() : ''; }
+    var fecha=col('fecha'), hm=col('hora').match(/^(\d{1,2}):(\d{2})(:\d{2})?$/), dur=col('duracion_min');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha)){ errores.push({fila:r.fila, motivo:'fecha debe ser AAAA-MM-DD'}); return; }
+    if(!hm){ errores.push({fila:r.fila, motivo:'hora debe ser HH:MM'}); return; }
+    if(dur && !/^\d+$/.test(dur)){ errores.push({fila:r.fila, motivo:'duracion_min debe ser un número de minutos'}); return; }
+    var d={cliente_nombre:col('nombre'), cliente_telefono:col('telefono'), servicio:col('servicio'),
+      cita_at:citaAtMadrid(fecha, pad(+hm[1])+':'+hm[2])};
+    var durSrv=durDe[d.servicio.toLowerCase()];
+    if(dur) d.duracion_min=+dur; else if(durSrv) d.duracion_min=durSrv;
+    if(col('estado')) d.estado=col('estado').toLowerCase();
+    if(col('notas')) d.notas=col('notas');
+    validas.push({fila:r.fila, datos:d});
+  });
+  csvPend={total:recs.length-1, validas:validas, errores:errores};
+  step.innerHTML=
+    '<div class="fld-hint" style="margin-bottom:12px">'+esc(file.name)+': <b>'+csvPend.total+'</b> fila'+(csvPend.total===1?'':'s')+' de citas'+
+      (errores.length?' · '+errores.length+' con formato incorrecto (no se enviarán)':'')+'.</div>'+
+    (validas.length?'<button class="btn-prim wide" id="csv-go" onclick="csvImportar()">Importar '+validas.length+' cita'+(validas.length===1?'':'s')+'</button>':'')+
+    (errores.length&&!validas.length?csvErroresHTML(errores):'');
+}
+function csvErroresHTML(errores){
+  if(!errores.length) return '';
+  return '<div class="csv-errs">'+errores.map(function(e){ return '<div><b>Fila '+e.fila+':</b> '+esc(e.motivo)+'</div>'; }).join('')+'</div>';
+}
+async function csvImportar(){
+  if(!csvPend) return;
+  var p=csvPend; csvPend=null;
+  var btn=document.getElementById('csv-go'), file=document.getElementById('csv-file');
+  btn.disabled=true; file.disabled=true;
+  var errores=p.errores.slice(), creadas=0;
+  for(var i=0;i<p.validas.length;i+=CSV_LOTE){
+    var lote=p.validas.slice(i,i+CSV_LOTE);
+    btn.textContent='Importando '+Math.min(i+CSV_LOTE,p.validas.length)+' de '+p.validas.length+'…';
+    var res=await pelu({action:'citas-importar', filas:lote.map(function(x){ return x.datos; })});
+    if(res && res._auth){ closeModal(); return; }
+    if(!res || res._neterr || !res.ok){
+      // Lote fallido: lo que queda no se envía, para no duplicar al reintentar a ciegas.
+      var por=res && res._neterr ? 'error de conexión' : ((res && (res.error||res.reason)) || 'error del servidor');
+      p.validas.slice(i).forEach(function(x){ errores.push({fila:x.fila, motivo:'no enviada ('+por+')'}); });
+      break;
+    }
+    creadas+=res.creadas||0;
+    (res.errores||[]).forEach(function(e){
+      var x=lote[e.fila-1];
+      errores.push({fila:x ? x.fila : '?', motivo:e.motivo});
+    });
+  }
+  errores.sort(function(a,b){ return a.fila-b.fila; });
+  document.getElementById('csv-body').innerHTML=
+    '<div class="csv-res">'+creadas+' de '+p.total+' importadas</div>'+
+    (errores.length?'<div class="fld-hint" style="margin-bottom:8px">Filas con error (no se han creado):</div>'+csvErroresHTML(errores):'')+
+    '<button class="btn-prim wide" style="margin-top:16px" onclick="closeModal()">Cerrar</button>';
+  toast(creadas+' de '+p.total+' importadas', errores.length?'err':'ok');
+  await loadWeek();
 }
 
 // ===== WEEK NAV =====
