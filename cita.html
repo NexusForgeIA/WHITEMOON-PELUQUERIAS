@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Reserva directa (QR / enlace): utilidad, no contenido para buscadores. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#fdf4f8">
+<title>Reserva tu cita</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23fdeef4'/%3E%3Cg fill='none' stroke='%23b84679' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8.5' cy='23' r='3'/%3E%3Ccircle cx='23.5' cy='23' r='3'/%3E%3Cpath d='M10.8 20.8 24 6'/%3E%3Cpath d='M21.2 20.8 8 6'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preload" as="font" type="font/woff2" href="assets/fonts/sora-400-latin.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="assets/fonts/sora-700-latin.woff2" crossorigin>
+<!-- Colores y estilos del chat: los de la web del salón. -->
+<link rel="stylesheet" href="assets/css/style.css">
+<style>
+@font-face{font-family:'Sora';font-style:normal;font-weight:400;font-display:swap;src:url(assets/fonts/sora-400-latin.woff2) format('woff2')}
+@font-face{font-family:'Sora';font-style:normal;font-weight:500;font-display:swap;src:url(assets/fonts/sora-500-latin.woff2) format('woff2')}
+@font-face{font-family:'Sora';font-style:normal;font-weight:600;font-display:swap;src:url(assets/fonts/sora-600-latin.woff2) format('woff2')}
+@font-face{font-family:'Sora';font-style:normal;font-weight:700;font-display:swap;src:url(assets/fonts/sora-700-latin.woff2) format('woff2')}
+/* El chat es la página: a pantalla completa en el móvil, columna centrada en
+   pantallas grandes. Solo se sobrescribe la colocación del panel. */
+html,body{height:100%}
+body.cita{background:var(--bg-ro);overflow:hidden}
+body.cita .alexia-panel{
+  position:fixed;inset:0;margin:0 auto;
+  width:100%;max-width:640px;height:100dvh;max-height:none;
+  border:0;border-radius:0;box-shadow:none;
+  opacity:1;transform:none;pointer-events:auto;transition:none;
+}
+body.cita .alexia-head{padding-top:max(16px, env(safe-area-inset-top))}
+body.cita .alexia-head b{font-family:var(--display);font-weight:600;font-size:1.18rem;letter-spacing:-.01em}
+body.cita .alexia-head__close{display:none}
+body.cita .alexia-note{padding-bottom:max(8px, env(safe-area-inset-bottom))}
+@media (min-width:700px){
+  body.cita .alexia-panel{border-left:1px solid var(--line);border-right:1px solid var(--line);box-shadow:var(--sh-lg)}
+}
+</style>
+</head>
+<body class="cita">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="ic-scissors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18.5" r="2.6"/><circle cx="18" cy="18.5" r="2.6"/><path d="M7.8 16.6 18.5 3.5M16.2 16.6 5.5 3.5"/></symbol>
+  <symbol id="ic-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></symbol>
+  <symbol id="ic-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+</svg>
+
+<!-- Mismo marcado que el chat de index.html, sin el botón flotante. El nombre
+     del salón lo pone alexia.js (window.Alexia.salon). -->
+<main id="alexia" class="alexia-panel" aria-label="Reserva tu cita" inert>
+  <div class="alexia-head">
+    <span class="alexia-head__av"><svg aria-hidden="true"><use href="#ic-scissors"/></svg></span>
+    <div>
+      <b id="cita-salon"></b>
+      <small>Reserva tu cita</small>
+    </div>
+    <!-- alexia.js lo necesita; aquí va oculto: el chat es la página. -->
+    <button class="alexia-head__close" type="button" aria-label="Cerrar chat" tabindex="-1"><svg aria-hidden="true"><use href="#ic-close"/></svg></button>
+  </div>
+  <div class="alexia-body" role="log" aria-live="polite"></div>
+  <div class="alexia-quick"></div>
+  <form class="alexia-foot" autocomplete="off">
+    <label class="sr-only" for="alexia-input">Escribe tu mensaje para el asistente</label>
+    <input id="alexia-input" type="text" name="mensaje" placeholder="Escribe tu respuesta…" disabled>
+    <button type="submit" aria-label="Enviar mensaje" disabled><svg aria-hidden="true"><use href="#ic-send"/></svg></button>
+  </form>
+  <p class="alexia-note">Tus datos solo se usan para gestionar tu cita.</p>
+</main>
+
+<script src="assets/js/alexia.js" defer></script>
+<script>
+  /* Escape cerraría el chat y dejaría la página en blanco: aquí no se cierra. */
+  window.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") e.stopImmediatePropagation();
+  }, true);
+  document.addEventListener("DOMContentLoaded", function () {
+    if (!window.Alexia) return;
+    document.getElementById("cita-salon").textContent = window.Alexia.salon;
+    document.title = "Reserva tu cita · " + window.Alexia.salon;
+    window.Alexia.open();
+  });
+</script>
+</body>
+</html>

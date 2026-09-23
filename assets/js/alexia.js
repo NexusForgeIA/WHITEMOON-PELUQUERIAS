@@ -1045,4 +1045,8 @@
   document.querySelectorAll("[data-alexia]").forEach((el) =>
     el.addEventListener("click", (e) => { e.preventDefault(); open(el.dataset.servicio); })
   );
+
+  /* Hook para páginas que abren el chat sin el botón (cita.html, a pantalla
+     completa): abrir y el nombre del salón. El widget de index.html no lo usa. */
+  window.Alexia = { open, salon: SALON };
 })();
