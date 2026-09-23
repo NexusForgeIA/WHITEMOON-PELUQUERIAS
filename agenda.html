@@ -967,7 +967,7 @@ function openImportarCSV(){
 // CSV con comillas ("" escapa), separador , o ; (Excel en español) y BOM.
 // Devuelve registros no vacíos con la fila del archivo donde empiezan.
 function parseCSV(txt){
-  txt=txt.replace(/^﻿/,'');
+  if(txt.charCodeAt(0)===0xFEFF) txt=txt.slice(1);
   var cab=txt.split(/\r?\n/,1)[0];
   var sep=cab.split(';').length>cab.split(',').length ? ';' : ',';
   var out=[], cells=[], f='', q=false, fila=1, inicio=1;
