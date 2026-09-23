@@ -67,6 +67,7 @@ button{font-family:inherit}
 .wbtn:hover{background:rgba(110,193,228,.14);border-color:var(--primary)}
 .wbtn.now{background:var(--grad);border-color:transparent;color:#0d1b26}
 .wbtn svg{width:15px;height:15px}
+.wacts{display:flex;gap:8px;margin-left:auto}
 
 /* CALENDAR */
 .wrap{max-width:1280px;margin:0 auto;padding:16px 26px 60px}
@@ -237,6 +238,9 @@ textarea.ta{min-height:90px;resize:vertical;line-height:1.5}
 .modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border)}
 .modal-head h3{font-size:1.1rem;font-weight:700}
 .modal-body{padding:20px}
+.modal.tall .modal-body{max-height:calc(100dvh - 110px);overflow-y:auto}
+.fld-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.modal select.inp,.modal input.inp{color-scheme:dark}
 
 /* ===== SERVICIOS ===== */
 .srv-table{display:flex;flex-direction:column;gap:12px}
@@ -393,6 +397,9 @@ textarea.ta{min-height:90px;resize:vertical;line-height:1.5}
         <button class="wbtn now" onclick="thisWeek()">Esta semana</button>
         <button class="wbtn" onclick="shiftWeek(1)"><span>Siguiente</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
       </div>
+      <div class="wacts">
+        <button class="btn-prim" onclick="openNuevaCita()">+ Añadir cita</button>
+      </div>
     </div>
 
     <div class="wrap">
@@ -454,6 +461,8 @@ var ESTADOS = {
   cancelada:{label:'Cancelada', c:'#475569'}
 };
 function estadoInfo(e){ return ESTADOS[e] || ESTADOS.agendada; }
+// origen lo pone el backend: chatbot por defecto, manual o importado.
+var ORIGENES = { chatbot:'Asistente de la web', manual:'Alta manual', importado:'Importada (CSV)' };
 
 // franjas horarias (min desde medianoche)
 var M_START=600, M_END=840, T_START=960, T_END=1230;  // 10:00-14:00 · 16:00-20:30
@@ -515,6 +524,11 @@ function madridParts(isoStr){
   return { date:o.year+'-'+o.month+'-'+o.day, hm:hh+':'+o.minute, min:(+hh)*60+(+o.minute) };
 }
 function citaMinutes(c){ return c._md.min; }
+// Fecha (YYYY-MM-DD) + hora (HH:MM) de pared en Madrid → ISO con su offset.
+// Offset de mediodía, como weekRange: el cambio de hora es de madrugada.
+function citaAtMadrid(fecha, hora){
+  return fecha+'T'+hora+':00'+madridOffset(new Date(fecha+'T12:00:00Z'));
+}
 
 // ===== NET =====
 // En modo salón cada llamada lleva el token del tenant y el JWT de la sesión:
@@ -744,6 +758,7 @@ function openPanel(c){
     '<div class="field"><label>Estado</label><div><span class="pill" style="position:static;margin:0;background:'+hexA(info.c,.16)+';color:'+lighten(info.c)+'">'+info.label+'</span></div></div>'+
     '<div class="field"><label>Servicio</label><div>'+esc(c.servicio||'—')+' · '+(c.duracion_min||30)+' min</div></div>'+
     '<div class="field"><label>Teléfono</label><div><a href="tel:'+esc(c.cliente_telefono||'')+'">'+esc(c.cliente_telefono||'—')+'</a></div></div>'+
+    (ORIGENES[c.origen]?'<div class="field"><label>Origen</label><div>'+ORIGENES[c.origen]+'</div></div>':'')+
     (c.resena_enviada?'<div class="field"><label>Reseña GMB</label><div>✓ Enviada</div></div>':'')+
     '<div class="notas-box">'+
       '<label>Observaciones</label>'+
@@ -851,6 +866,71 @@ async function doRepro(cita_at){
     toast((res && res.reason) || 'No se pudo reprogramar','err');
     if(current){ var p=cita_at.slice(0,10).split('-'),cc={y:+p[0],m:+p[1],d:+p[2]}; reproSlots(cita_at.slice(0,10), DOW[dowOf(cc)]+' '+cc.d+' '+MES[cc.m-1]); }
   }
+}
+
+// ===== NUEVA CITA (alta manual) =====
+// Walk-ins y migraciones: cualquier fecha/hora. El único corte es el solape
+// con otra cita viva, y lo hace el backend (cita-crear → hueco-ocupado).
+var ncServicios=[];
+// Servicios activos en su orden, o null si no se pudo cargar (ya avisado).
+async function catalogoActivo(){
+  var res=await pelu({action:ACC_SERVICIOS});
+  if(res && res._auth) return null;
+  if(!res || res._neterr || res.ok===false){ toast('No se pudo cargar el catálogo de servicios','err'); return null; }
+  return (res.servicios||[]).filter(function(t){ return t.activo; }).sort(byOrden);
+}
+async function openNuevaCita(){
+  var cat=await catalogoActivo();
+  if(!cat) return;
+  if(!cat.length){ toast('Primero añade un servicio en la pestaña Servicios','err'); return; }
+  ncServicios=cat;
+  var srvOpts=cat.map(function(t,i){ return '<option value="'+i+'">'+esc(t.nombre)+' · '+t.duracion_min+' min</option>'; }).join('');
+  var estOpts=Object.keys(ESTADOS).map(function(k){ return '<option value="'+k+'"'+(k==='agendada'?' selected':'')+'>'+ESTADOS[k].label+'</option>'; }).join('');
+  document.getElementById('modalHost').innerHTML=
+    '<div class="modal-scrim" onclick="closeModalBg(event)">'+
+      '<div class="modal tall">'+
+        '<div class="modal-head"><h3>Añadir cita</h3>'+
+          '<button class="panel-close" onclick="closeModal()" aria-label="Cerrar">×</button></div>'+
+        '<div class="modal-body">'+
+          field('Cliente','<input class="inp" id="nc-nombre" maxlength="120" placeholder="Nombre y apellidos">')+
+          field('Teléfono','<input class="inp" id="nc-tel" maxlength="30" placeholder="600111222" inputmode="tel">')+
+          field('Servicio','<select class="inp" id="nc-srv">'+srvOpts+'</select>')+
+          '<div class="fld-2">'+
+            field('Fecha','<input class="inp" id="nc-fecha" type="date" value="'+nextBusinessDays(1)[0].iso+'">')+
+            field('Hora','<input class="inp" id="nc-hora" type="time" step="300" value="10:00">')+
+          '</div>'+
+          field('Estado','<select class="inp" id="nc-estado">'+estOpts+'</select>')+
+          field('Notas','<textarea class="inp ta" id="nc-notas" maxlength="2000" placeholder="Opcional"></textarea>')+
+          '<div class="form-err" id="nc-err"></div>'+
+          '<button class="btn-prim wide" id="nc-save" onclick="crearCita()">Añadir cita</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  setTimeout(function(){ var e=document.getElementById('nc-nombre'); if(e) e.focus(); }, 60);
+}
+async function crearCita(){
+  var err=document.getElementById('nc-err'); err.textContent='';
+  var nombre=val('nc-nombre').trim(), tel=val('nc-tel').trim();
+  var srv=ncServicios[+val('nc-srv')], fecha=val('nc-fecha'), hora=val('nc-hora');
+  if(nombre.length<2){ err.textContent='El nombre del cliente es obligatorio.'; return; }
+  if((tel.match(/\d/g)||[]).length<9){ err.textContent='El teléfono debe tener al menos 9 dígitos.'; return; }
+  if(!srv){ err.textContent='Elige un servicio.'; return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !/^\d{2}:\d{2}$/.test(hora)){ err.textContent='Indica fecha y hora.'; return; }
+  var notas=val('nc-notas').trim();
+  var btn=document.getElementById('nc-save'); var prev=btn.textContent; btn.disabled=true; btn.textContent='Guardando…';
+  var res=await pelu({action:'cita-crear', cliente_nombre:nombre, cliente_telefono:tel, servicio:srv.nombre,
+    cita_at:citaAtMadrid(fecha, hora), duracion_min:srv.duracion_min, estado:val('nc-estado'), notas:notas||null});
+  btn.disabled=false; btn.textContent=prev;
+  if(res && res._auth){ closeModal(); return; }
+  if(res && res.ok && !res._neterr){
+    closeModal(); toast('Cita añadida','ok');
+    var p=fecha.split('-'); currentMonday=mondayOf({y:+p[0],m:+p[1],d:+p[2]});
+    await loadWeek();
+    return;
+  }
+  if(res && res.reason==='hueco-ocupado'){ err.textContent='Ya hay una cita a esa hora.'; toast('Ya hay una cita a esa hora','err'); return; }
+  if(res && res._neterr){ err.textContent='Error de conexión. Inténtalo de nuevo.'; return; }
+  err.textContent=(res && (res.error||res.reason)) || 'No se pudo añadir la cita';
 }
 
 // ===== WEEK NAV =====
