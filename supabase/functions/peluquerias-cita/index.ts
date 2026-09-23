@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // peluquerias-cita — backend de la agenda de la demo WhiteMoon · Peluquería Aurora.
 // v11: + cita-crear (alta manual, bloquea solape) + citas-importar (CSV en bloque, sin bloquear solape). Acotadas al tenant demo.
+// v12: + servicio-crear; servicio-set acepta nombre. Sin borrado (activo:false lo oculta).
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -49,6 +50,26 @@ function mismoNombre(dado: string, guardado: string): boolean {
 function clampDur(v: unknown, fallback = 45): number {
   const n = parseInt(String(v), 10);
   return Math.min(Math.max(isNaN(n) ? fallback : n, DUR_MIN), DUR_MAX);
+}
+
+// Validaciones de servicio, compartidas por servicio-set y servicio-crear:
+// devuelven el valor limpio o { error } con el mensaje del 400.
+function valNombre(v: unknown): string | { error: string } {
+  const n = String(v ?? '').trim();
+  return n.length < 1 || n.length > 80 ? { error: 'nombre debe tener entre 1 y 80 caracteres' } : n;
+}
+function valDuracion(v: unknown): number | { error: string } {
+  const d = parseInt(String(v), 10);
+  return isNaN(d) || d < DUR_MIN || d > DUR_MAX ? { error: `duracion_min debe estar entre ${DUR_MIN} y ${DUR_MAX}` } : d;
+}
+function valPrecio(v: unknown): number | { error: string } {
+  const p = Number(v);
+  return isNaN(p) || p < 0 || p > 9999 ? { error: 'precio_eur debe ser un numero entre 0 y 9999' } : Math.round(p * 100) / 100;
+}
+async function nombreOcupado(nombre: string, exceptoId = ''): Promise<boolean> {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${EN_DEMO}&nombre=eq.${encodeURIComponent(nombre)}${exceptoId ? `&id=neq.${encodeURIComponent(exceptoId)}` : ''}&select=id`, { headers: REST_HEADERS });
+  const rows = await r.json();
+  return Array.isArray(rows) && rows.length > 0;
 }
 
 async function getConfig() {
@@ -195,18 +216,24 @@ Deno.serve(async (req: Request) => {
       const campos = body.campos || {};
       if (!sid) return json({ error: 'id obligatorio' }, 400);
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if ('nombre' in campos) {
+        const n = valNombre(campos.nombre);
+        if (typeof n !== 'string') return json(n, 400);
+        if (await nombreOcupado(n, sid)) return json({ ok: false, reason: 'ya existe un servicio con ese nombre' });
+        patch.nombre = n;
+      }
       if ('precio_eur' in campos) {
-        const p = Number(campos.precio_eur);
-        if (isNaN(p) || p < 0 || p > 9999) return json({ error: 'precio_eur debe ser un numero entre 0 y 9999' }, 400);
-        patch.precio_eur = Math.round(p * 100) / 100;
+        const p = valPrecio(campos.precio_eur);
+        if (typeof p !== 'number') return json(p, 400);
+        patch.precio_eur = p;
       }
       if ('duracion_min' in campos) {
-        const d = parseInt(campos.duracion_min, 10);
-        if (isNaN(d) || d < DUR_MIN || d > DUR_MAX) return json({ error: `duracion_min debe estar entre ${DUR_MIN} y ${DUR_MAX}` }, 400);
+        const d = valDuracion(campos.duracion_min);
+        if (typeof d !== 'number') return json(d, 400);
         patch.duracion_min = d;
       }
       if ('activo' in campos) patch.activo = Boolean(campos.activo);
-      if (Object.keys(patch).length <= 1) return json({ error: 'sin campos validos (precio_eur, duracion_min, activo)' }, 400);
+      if (Object.keys(patch).length <= 1) return json({ error: 'sin campos validos (nombre, precio_eur, duracion_min, activo)' }, 400);
       const r = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${EN_DEMO}&id=eq.${encodeURIComponent(sid)}`, {
         method: 'PATCH',
         headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
@@ -217,6 +244,31 @@ Deno.serve(async (req: Request) => {
       if (!s) return json({ error: 'servicio no encontrado' }, 404);
       await log(null, 'servicio', `${s.nombre}: ${Object.keys(patch).filter(k => k !== 'updated_at').map(k => `${k}=${(patch as any)[k]}`).join(', ')}`);
       return json({ ok: true, id: s.id, nombre: s.nombre, precio_eur: s.precio_eur, duracion_min: s.duracion_min, activo: s.activo });
+    }
+
+    // ---- SERVICIO-CREAR (panel demo): mismas validaciones que servicio-set ----
+    if (action === 'servicio-crear') {
+      const n = valNombre(body.nombre);
+      if (typeof n !== 'string') return json(n, 400);
+      const d = valDuracion(body.duracion_min);
+      if (typeof d !== 'number') return json(d, 400);
+      const p = valPrecio(body.precio_eur);
+      if (typeof p !== 'number') return json(p, 400);
+      const activo = body.activo === undefined ? true : Boolean(body.activo);
+      if (await nombreOcupado(n)) return json({ ok: false, reason: 'ya existe un servicio con ese nombre' });
+      const ord = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria?${EN_DEMO}&select=orden&order=orden.desc&limit=1`, { headers: REST_HEADERS });
+      const ordRows = await ord.json();
+      const orden = (Array.isArray(ordRows) && ordRows[0] ? Number(ordRows[0].orden) : -1) + 1;
+      const ins = await fetch(`${SUPABASE_URL}/rest/v1/servicios_peluqueria`, {
+        method: 'POST',
+        headers: { ...REST_HEADERS, 'Prefer': 'return=representation' },
+        body: JSON.stringify({ tenant: DEMO_TENANT, nombre: n, duracion_min: d, precio_eur: p, activo, orden }),
+      });
+      const rows = await ins.json();
+      const s = Array.isArray(rows) ? rows[0] : null;
+      if (!s) return json({ error: 'no se pudo crear el servicio' }, 500);
+      await log(null, 'servicio', `Creado: ${s.nombre} (${s.duracion_min} min, ${s.precio_eur}€)`);
+      return json({ ok: true, id: s.id, nombre: s.nombre, duracion_min: s.duracion_min, precio_eur: s.precio_eur, activo: s.activo, orden: s.orden });
     }
 
     if (action === 'config-get') {
@@ -576,7 +628,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, cita_id: citaId, cita_at: citaAt, cuando: fmtMadrid(citaAt) });
     }
 
-    return json({ error: 'action debe ser huecos, reservar, cita-crear, citas-importar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list o servicio-set' }, 400);
+    return json({ error: 'action debe ser huecos, reservar, cita-crear, citas-importar, buscar-cita, comprobar-nombre, cancelar-cita, reprogramar-cita, agenda, estado, notas, reprogramar, config-get, config-set, clientes, cliente-get, cliente-set, servicios-list, servicio-set o servicio-crear' }, 400);
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
