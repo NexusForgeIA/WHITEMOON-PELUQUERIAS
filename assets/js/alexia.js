@@ -273,15 +273,20 @@
   const start = async (desdeTarjeta) => {
     if (started) return; started = true;
     setInput(false);
-    const pCatalogo = cargaCatalogo();
-    await botSay("Hola, soy el asistente de Peluquería Aurora. Te busco cita en un minuto, sin llamadas.");
-    const cat = await pCatalogo;
+    /* Saludo y pregunta en UNA burbuja: la apertura cabe sin scroll. Mientras
+       llega el catálogo se ve el "escribiendo…". */
+    const t = typing();
+    const cat = await cargaCatalogo();
+    t.remove();
     if (cat && cat.length) SERVICIOS = cat;
     /* Demo sin respuesta del catálogo: la lista de siempre. Un salón nunca
        usa WORKS (son nombres de la demo): sin catálogo, solo lead. */
     else if (!cat && ES_DEMO) SERVICIOS = WORKS.map((w) => servicioDe(w.svc, w.dur));
-    if (!SERVICIOS.length) { soloLead(); return; }
-    await botSay("¿Qué te apetece hacerte?", () => menuInicial());
+    if (!SERVICIOS.length) {
+      await botSay("Hola 👋 Soy el asistente de Peluquería Aurora.");
+      soloLead(); return;
+    }
+    await botSay("Hola 👋 Soy el asistente de Peluquería Aurora. ¿Qué servicio quieres reservar?", () => menuInicial());
     if (desdeTarjeta) eligeDesdeTarjeta(desdeTarjeta);
   };
 
