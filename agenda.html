@@ -95,6 +95,12 @@ button{font-family:inherit}
 .cita .ct{font-size:.72rem;font-weight:700;line-height:1.1}
 .cita .cn{font-size:.78rem;font-weight:600;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cita .cs{font-size:.68rem;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cita .qa{position:absolute;top:4px;right:4px;display:none;gap:4px}
+.cita:hover .qa,.cita:focus-within .qa{display:flex}
+.qb{background:var(--panel);border:1px solid var(--border2);color:var(--text);border-radius:7px;padding:3px 7px;font-size:.66rem;font-weight:700;cursor:pointer;font-family:inherit}
+.qb:hover{border-color:var(--primary);color:#a9dcf2}
+.qb.del:hover{border-color:var(--noshow);color:#fca5a5}
+.lrow .qa{display:flex;gap:6px;margin-left:6px}
 .cita.cancelada{opacity:.5}
 .cita.cancelada .cn{text-decoration:line-through}
 
@@ -641,7 +647,8 @@ async function loadWeek(){
   var res=await pelu({action:'agenda', desde:r.desde, hasta:r.hasta});
   document.getElementById('loading').style.display='none';
   if(res._neterr){ toast('No se pudo conectar con la agenda','err'); citas=[]; }
-  else { citas=(res&&res.citas)||[]; }
+  // Las canceladas no ocupan hueco: fuera de la agenda activa.
+  else { citas=((res&&res.citas)||[]).filter(function(c){ return c.estado!=='cancelada'; }); }
   citas.forEach(function(c){ c._md=madridParts(c.cita_at); });
   render();
 }
@@ -719,7 +726,18 @@ function citaBlock(c){
   el.style.color=lighten(info.c);
   el.innerHTML='<div class="ct">'+minToStr(start)+'</div><div class="cn">'+esc(c.cliente_nombre)+noteIco(c)+'</div><div class="cs">'+esc(c.servicio||'')+'</div>';
   el.onclick=function(){ openPanel(c); };
+  el.appendChild(accesosCita(c));
   return el;
+}
+// Mover / Cancelar directos en cada cita: abren el panel ya en ese paso.
+function accesosCita(c){
+  var box=document.createElement('div'); box.className='qa';
+  [['Mover','',startRepro],['Cancelar',' del',pedirCancelar]].forEach(function(a){
+    var b=document.createElement('button'); b.className='qb'+a[1]; b.textContent=a[0];
+    b.onclick=function(e){ e.stopPropagation(); openPanel(c); a[2](); };
+    box.appendChild(b);
+  });
+  return box;
 }
 function renderList(days, todayIso){
   var wrap=document.getElementById('list'); wrap.innerHTML='';
@@ -738,6 +756,7 @@ function renderList(days, todayIso){
         '<div class="li"><b>'+esc(x.cliente_nombre)+noteIco(x)+'</b><span>'+esc(x.servicio||'')+' · '+(x.duracion_min||30)+' min</span></div>'+
         '<span class="pill" style="background:'+hexA(info.c,.16)+';color:'+lighten(info.c)+'">'+info.label+'</span>';
       row.onclick=function(){ openPanel(x); };
+      row.appendChild(accesosCita(x));
       grp.appendChild(row);
     });
     wrap.appendChild(grp);
@@ -778,8 +797,8 @@ function openPanel(c){
       '<button class="act confirm" onclick="act(\'confirmada\')">✓ Confirmar</button>'+
       '<button class="act done" onclick="act(\'completada\')">✔ Completada</button>'+
       '<button class="act noshow" onclick="act(\'no_show\')">✕ No show</button>'+
-      '<button class="act cancel" onclick="act(\'cancelada\')">🗑 Cancelar</button>'+
-      '<button class="act repro" onclick="startRepro()">🔁 Reprogramar</button>'+
+      '<button class="act cancel" onclick="pedirCancelar()">🗑 Cancelar</button>'+
+      '<button class="act repro" onclick="startRepro()">🔁 Mover</button>'+
     '</div>'+
     '<div id="reproBox"></div>';
   updateNotasCount();
@@ -794,13 +813,26 @@ function closePanel(){
 async function act(estado){
   if(!current) return;
   var res=await pelu({action:'estado', cita_id:current.id, estado:estado});
-  if(res && res.ok!==false && !res._neterr){
-    var msg = estado==='completada' ? 'Cita completada · reseña enviada' : 'Cita marcada como '+estadoInfo(estado).label.toLowerCase();
+  if(res && res.ok && !res._neterr){
+    var msg = estado==='completada' ? 'Cita completada · reseña enviada'
+      : estado==='cancelada' ? 'Cita cancelada · el hueco queda libre'
+      : 'Cita marcada como '+estadoInfo(estado).label.toLowerCase();
     toast(msg,'ok'); closePanel(); await loadWeek();
   } else {
-    toast((res && res.reason) || 'No se pudo actualizar','err');
+    toast((res && (res.reason||res.error)) || 'No se pudo actualizar','err');
   }
 }
+// Confirmación en el propio panel (nada de window.confirm).
+function pedirCancelar(){
+  if(!current) return;
+  document.getElementById('reproBox').innerHTML=
+    '<div class="repro-box"><div class="rt">¿Cancelar la cita de <b>'+esc(current.cliente_nombre)+'</b> ('+esc(current._md.hm)+')? El hueco quedará libre.</div>'+
+      '<div class="rchips"><button class="rchip" onclick="act(\'cancelada\')">Sí, cancelar</button>'+
+      '<button class="rchip" onclick="document.getElementById(\'reproBox\').innerHTML=\'\'">No</button></div></div>';
+  verPaso();
+}
+// El paso (confirmar / elegir hueco) va al final del panel: lo traemos a la vista.
+function verPaso(){ document.getElementById('reproBox').scrollIntoView({block:'nearest', behavior:'smooth'}); }
 
 // ===== OBSERVACIONES =====
 function updateNotasCount(){
@@ -844,6 +876,7 @@ function startRepro(){
   var inp=document.createElement('input'); inp.type='date'; inp.className='rdate'; inp.min=isoOf(madridToday());
   inp.onchange=function(){ if(inp.value){ var p=inp.value.split('-'),cc={y:+p[0],m:+p[1],d:+p[2]}; reproSlots(inp.value, DOW[dowOf(cc)]+' '+cc.d+' '+MES[cc.m-1]); } };
   wrap.appendChild(inp);
+  verPaso();
 }
 async function reproSlots(dia, label){
   var box=document.getElementById('reproBox');
@@ -855,9 +888,9 @@ async function reproSlots(dia, label){
     box.innerHTML='<div class="repro-box"><div class="rt">Ese día está completo 😕. Prueba con otro.</div></div>';
     setTimeout(startRepro,1200); return;
   }
-  box.innerHTML='<div class="repro-box"><div class="rt">Huecos libres el '+label+':</div><div class="rchips" id="rHours"></div></div>';
+  box.innerHTML='<div class="repro-box"><div class="rt">Huecos libres el '+label+' · toca una hora para mover la cita:</div><div class="rchips" id="rHours"></div></div>';
   var wrap=document.getElementById('rHours');
-  huecos.slice(0,8).forEach(function(iso){
+  huecos.forEach(function(iso){
     var btn=document.createElement('button'); btn.className='rchip'; btn.textContent=iso.slice(11,16);
     btn.onclick=function(){ doRepro(iso); };
     wrap.appendChild(btn);
@@ -867,11 +900,22 @@ async function doRepro(cita_at){
   if(!current) return;
   var res=await pelu({action:'reprogramar', cita_id:current.id, cita_at:cita_at});
   if(res && res.ok && !res._neterr){
-    toast('Cita reprogramada','ok'); closePanel(); await loadWeek();
-  } else {
-    toast((res && res.reason) || 'No se pudo reprogramar','err');
-    if(current){ var p=cita_at.slice(0,10).split('-'),cc={y:+p[0],m:+p[1],d:+p[2]}; reproSlots(cita_at.slice(0,10), DOW[dowOf(cc)]+' '+cc.d+' '+MES[cc.m-1]); }
+    toast('Cita movida · '+(res.cuando||'nuevo hueco'),'ok'); closePanel(); await loadWeek();
+    return;
   }
+  var box=document.getElementById('reproBox');
+  var aviso=function(t){ if(box) box.innerHTML='<div class="repro-box"><div class="rt">'+esc(t)+'</div></div>'; toast(t,'err'); };
+  if(res && res._neterr){ aviso('Error de conexión. La cita no se ha movido.'); return; }
+  var why=(res && (res.reason||res.error)) || '';
+  if(/no reprogramable/.test(why)){ aviso('Esta cita está '+(/cancelada/.test(why)?'cancelada':'completada')+': no se puede mover.'); return; }
+  if(/no encontrada/.test(why)){ aviso('Esta cita ya no existe. Recarga la agenda.'); return; }
+  if(/ocupado/.test(why)){
+    // Alguien cogió ese hueco mientras elegías: aviso y huecos recargados.
+    toast('Esa hora ya está ocupada. La cita no se ha movido.','err');
+    if(current){ var p=cita_at.slice(0,10).split('-'),cc={y:+p[0],m:+p[1],d:+p[2]}; reproSlots(cita_at.slice(0,10), DOW[dowOf(cc)]+' '+cc.d+' '+MES[cc.m-1]); }
+    return;
+  }
+  aviso(why || 'No se pudo mover la cita.');
 }
 
 // ===== NUEVA CITA (alta manual) =====
