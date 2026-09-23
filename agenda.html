@@ -787,7 +787,8 @@ function openPanel(c){
     '<div class="field"><label>Servicio</label><div>'+esc(c.servicio||'—')+' · '+(c.duracion_min||30)+' min</div></div>'+
     '<div class="field"><label>Teléfono</label><div><a href="tel:'+esc(c.cliente_telefono||'')+'">'+esc(c.cliente_telefono||'—')+'</a></div></div>'+
     (ORIGENES[c.origen]?'<div class="field"><label>Origen</label><div>'+ORIGENES[c.origen]+'</div></div>':'')+
-    (c.resena_enviada?'<div class="field"><label>Reseña GMB</label><div>✓ Enviada</div></div>':'')+
+    // resena_enviada solo marca que al completar se lanzó el aviso al salón; al cliente no le llega nada.
+    (c.resena_enviada?'<div class="field"><label>Reseña</label><div title="Al completar la cita se lanza el aviso al salón con el enlace de reseñas. Al cliente no se le envía nada.">Reseña gestionada</div></div>':'')+
     (c.estado==='completada'?'<div id="resenaCita"></div>':'')+
     '<div class="notas-box">'+
       '<label>Observaciones</label>'+
