@@ -25,8 +25,8 @@
    verify_jwt:false con sus tokens en Secrets.
 
    Estilo de respuesta: máximo 3 frases por mensaje y UNA pregunta cada vez.
-   Alexia nunca cierra precios: los importes que cuenta son los orientativos
-   públicos de la web, nunca tarifas internas.
+   Alexia nunca cierra precios: los importes que cuenta salen del catálogo
+   del salón (servicios-list), con su modo (fijo, desde, consultar, gratis).
    ========================================================================= */
 (() => {
   "use strict";
@@ -54,15 +54,13 @@
     "¡Te esperamos! ¿Necesitas cambiar o cancelar? Vuelve a hablar conmigo y " +
     "dime tu teléfono, y te la gestiono al momento.";
 
-  /* Categorías: los `label` son EXACTAMENTE los data-servicio de los botones
-     "Pedir cita" de las tarjetas, para que al entrar desde una tarjeta se
-     salte la pregunta inicial.
+  /* El menú sale del CATÁLOGO (servicios-list): los servicios activos, en su
+     orden, con nombre, duración y precio. Lo que el salón cambia en el panel
+     se ve aquí.
 
-     `svc` es el nombre del servicio tal y como existe en la agenda (tabla
-     servicios_peluqueria), porque es lo que espera `reservar`.
-
-     `dur` es solo el valor por defecto: al abrir el chat se refresca con la
-     duración real de la agenda, que el salón puede editar en el panel. */
+     WORKS es solo el respaldo de la DEMO si servicios-list falla, y la fuente
+     de dos tablas: `label` es el data-servicio de las tarjetas de la web y
+     `svc` el nombre en servicios_peluqueria (casi siempre iguales). */
   const WORKS = [
     { label: "Asesoría de imagen",   interes: "Asesoría de imagen",        svc: "Asesoría de imagen", dur: 30 },
     { label: "Corte y peinado",      interes: "Corte y peinado",           svc: "Corte y peinado",    dur: 45 },
@@ -75,21 +73,25 @@
     { label: "Brushing y peinado",   interes: "Brushing / peinado exprés", svc: "Brushing y peinado", dur: 30 },
     { label: "Barbería",             interes: "Barbería / corte caballero", svc: "Barbería",          dur: 30 },
   ];
+  /* Tarjeta de la web → nombre en el catálogo (solo cuando no coinciden). */
+  const ALIAS = Object.fromEntries(WORKS.filter((w) => w.label !== w.svc).map((w) => [w.label, w.svc]));
+  /* Categoría del lead por nombre de servicio; si no está, el propio nombre. */
+  const INTERES = Object.fromEntries(WORKS.map((w) => [w.svc, w.interes]));
 
-  /* Qué incluye cada servicio — se cuenta antes de pedir los datos.
-     Máximo 3 frases, sin preguntas: la pregunta va siempre aparte.
-     Los importes son los mismos precios orientativos que aparecen en la web. */
+  /* Qué incluye cada servicio, por su nombre en el catálogo — se cuenta antes
+     de pedir los datos. Máximo 3 frases, sin preguntas. SIN precios: el precio
+     sale del catálogo (precioTxt). Un servicio sin texto aquí usa uno genérico. */
   const INFO = {
-    "Asesoría de imagen": "La asesoría es gratis y sin compromiso: miramos tu pelo, hablamos de lo que buscas y te decimos qué se puede hacer de verdad. Si hay que ir por pasos, te lo contamos antes de empezar.",
-    "Corte y peinado": "Corte trabajado sobre tu tipo de pelo, con lavado y peinado incluidos. Salen unos 45 minutos. Orientativo desde 25 €.",
-    "Color y tinte": "Color de raíz a puntas o solo retoque, con test de mechón previo si cambias mucho de tono. Suele llevar hora y media. Orientativo desde 45 €.",
-    "Mechas y balayage": "Balayage, babylights o mechas clásicas, siempre con matizado y tratamiento de protección. Es la técnica más larga del salón: cuenta con dos horas y media. Orientativo desde 75 €.",
-    "Tratamientos capilares": "Hidratación profunda o reparación según cómo esté tu fibra capilar. Incluye ritual de lavado y masaje en el lavacabezas. Orientativo desde 30 €.",
-    "Keratina y alisado": "Alisado de keratina para reducir encrespamiento y bajar el tiempo de secado en casa. Dura unos meses según tu pelo y tus lavados. Orientativo desde 90 €.",
-    "Recogidos y novia": "Recogidos, semirrecogidos y peinados de evento. Para novia hacemos prueba previa aparte, para llegar al día tranquila. Orientativo desde 45 €.",
-    "Extensiones": "Colocación y adaptación del color al tuyo, con corte final para que el pelo caiga natural. También hacemos el mantenimiento después. Orientativo desde 150 €.",
-    "Brushing y peinado": "El peinado exprés de media hora: lavado, secado y brushing con volumen o liso. Es lo que se pide antes de una cena o una reunión. Orientativo desde 18 €.",
-    "Barbería": "Corte de caballero, arreglo de barba y perfilado. Media hora y sales listo. Orientativo desde 16 €.",
+    "Asesoría de imagen": "La asesoría es sin compromiso: miramos tu pelo, hablamos de lo que buscas y te decimos qué se puede hacer de verdad. Si hay que ir por pasos, te lo contamos antes de empezar.",
+    "Corte y peinado": "Corte trabajado sobre tu tipo de pelo, con lavado y peinado incluidos.",
+    "Color y tinte": "Color de raíz a puntas o solo retoque, con test de mechón previo si cambias mucho de tono.",
+    "Mechas y balayage": "Balayage, babylights o mechas clásicas, siempre con matizado y tratamiento de protección.",
+    "Tratamiento capilar": "Hidratación profunda o reparación según cómo esté tu fibra capilar. Incluye ritual de lavado y masaje en el lavacabezas.",
+    "Keratina y alisado": "Alisado de keratina para reducir encrespamiento y bajar el tiempo de secado en casa. Dura unos meses según tu pelo y tus lavados.",
+    "Recogido de evento": "Recogidos, semirrecogidos y peinados de evento. Para novia hacemos prueba previa aparte, para llegar al día tranquila.",
+    "Extensiones": "Colocación y adaptación del color al tuyo, con corte final para que el pelo caiga natural. También hacemos el mantenimiento después.",
+    "Brushing y peinado": "El peinado exprés: lavado, secado y brushing con volumen o liso. Es lo que se pide antes de una cena o una reunión.",
+    "Barbería": "Corte de caballero, arreglo de barba y perfilado.",
   };
 
   /* ---------- fechas ---------- */
@@ -219,49 +221,113 @@
     }
   };
 
-  /* Duraciones reales de la agenda: el salón puede cambiarlas desde el panel,
-     y la duración decide qué huecos entran. Si falla, se siguen usando las
-     de WORKS. */
-  const sincronizaDuraciones = async () => {
-    const res = await agenda({ action: "servicios-list" });
-    if (!res || !res.ok || !Array.isArray(res.servicios)) return;
-    const porNombre = new Map(res.servicios.map((s) => [s.nombre, s]));
-    WORKS.forEach((w) => {
-      const s = porNombre.get(w.svc);
-      if (s && s.duracion_min) w.dur = s.duracion_min;
-    });
+  /* ---------- catálogo ---------- */
+  const ES_DEMO = TENANT_TOKEN === "demo-peluquerias";
+  let SERVICIOS = [];      // lo que ofrece el menú; vacío = solo lead
+  const servicioDe = (nombre, dur, precio_eur, precio_modo) =>
+    ({ label: nombre, svc: nombre, dur: dur || 45, precio_eur, precio_modo, interes: INTERES[nombre] || nombre });
+
+  /* Servicios activos del catálogo en su orden, o null si no llega en ~2 s.
+     El filtro de activos va aquí: la demo devuelve también los inactivos. */
+  const cargaCatalogo = async () => {
+    const res = await Promise.race([
+      agenda({ action: "servicios-list" }),
+      new Promise((r) => setTimeout(() => r(null), 2000)),
+    ]);
+    if (!res || !res.ok || !Array.isArray(res.servicios)) return null;
+    return res.servicios
+      .filter((s) => s.activo)
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+      .map((s) => servicioDe(s.nombre, s.duracion_min, s.precio_eur, s.precio_modo));
+  };
+
+  /* Precio por modo; sin precio_modo (la demo no lo manda) cuenta como fijo. */
+  const eur = (n) => {
+    const d = Number(n) % 1 ? 2 : 0;
+    return Number(n).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d }) + " €";
+  };
+  const precioTxt = (w) => {
+    const modo = w.precio_modo || "fijo";
+    if (modo === "consulta") return "precio a consultar";
+    if (modo === "gratis") return "gratis";
+    if (w.precio_eur == null || w.precio_eur === "" || isNaN(Number(w.precio_eur))) return "";
+    if (modo === "fijo" && Number(w.precio_eur) === 0) return "gratis";
+    return (modo === "desde" ? "desde " : "") + eur(w.precio_eur);
+  };
+  /* Tarjeta de la web (o nombre) → servicio activo, o nada si ya no lo está. */
+  const buscaServicio = (etiqueta) => {
+    const nombre = ALIAS[etiqueta] || etiqueta;
+    return SERVICIOS.find((x) => x.label === nombre);
   };
 
   /* ---------- flujo ---------- */
-  const start = async () => {
+  const start = async (desdeTarjeta) => {
     if (started) return; started = true;
     setInput(false);
-    sincronizaDuraciones();
+    const pCatalogo = cargaCatalogo();
     await botSay("Hola, soy el asistente de Peluquería Aurora. Te busco cita en un minuto, sin llamadas.");
+    const cat = await pCatalogo;
+    if (cat && cat.length) SERVICIOS = cat;
+    /* Demo sin respuesta del catálogo: la lista de siempre. Un salón nunca
+       usa WORKS (son nombres de la demo): sin catálogo, solo lead. */
+    else if (!cat && ES_DEMO) SERVICIOS = WORKS.map((w) => servicioDe(w.svc, w.dur));
+    if (!SERVICIOS.length) { soloLead(); return; }
     await botSay("¿Qué te apetece hacerte?", () => menuInicial());
+    if (desdeTarjeta) eligeDesdeTarjeta(desdeTarjeta);
   };
 
   const menuInicial = () => {
     modo = "reserva";
     step = "work";
     setInput(false);
-    setQuick(WORKS.concat([GESTION]), (w) => {
+    setQuick(SERVICIOS.concat([GESTION]), (w) => {
       addMsg(w.label, "user");
       if (w.gestion) askGestionTel(); else pickWork(w.label);
     });
   };
 
+  /* Si el servicio de la tarjeta ya no está activo, se queda el menú normal. */
+  const eligeDesdeTarjeta = (etiqueta) => {
+    const w = buscaServicio(etiqueta);
+    if (!w || step !== "work") return;
+    addMsg(w.label, "user");
+    pickWork(w.label);
+  };
+
   /* Elegido el servicio: primero cuenta qué incluye, luego pide el nombre. */
   const pickWork = async (label) => {
-    const w = WORKS.find((x) => x.label === label) || WORKS[0];
+    const w = SERVICIOS.find((x) => x.label === label) || SERVICIOS[0];
     lead.servicio = w.label;
     lead.interes = w.interes;
     lead.svc = w.svc;
     lead.dur = w.dur;
     clearQuick();
-    const info = INFO[w.label];
-    if (info) await botSay(info);
+    const precio = precioTxt(w);
+    const info = INFO[w.svc] || "";
+    await botSay((info ? info + " " : "") + "Unos " + w.dur + " min" + (precio ? " · " + precio : "") + ".");
     askName();
+  };
+
+  /* Sin catálogo (salón sin servicios o sin red): sin elegir servicio, se
+     recogen nombre y teléfono y se remite al teléfono del salón. */
+  let soloLeadActivo = false;
+  const soloLead = async () => {
+    soloLeadActivo = true;
+    lead.servicio = "Cita (sin servicio elegido)";
+    lead.interes = "Cita";
+    step = "name";
+    clearQuick();
+    await botSay("Ahora mismo no puedo enseñarte los servicios, pero te dejo apuntado y el salón te llama para darte cita.");
+    await botSay("¿A nombre de quién?", () => setInput(true, "Tu nombre…"));
+  };
+  const cierreSoloLead = async () => {
+    step = "done";
+    setInput(false); clearQuick();
+    const t = typing();
+    const ok = await enviarLead();
+    t.remove();
+    if (ok) tarjetaExito("Anotado. Te llamamos al " + lead.telefono + " para darte cita.");
+    addMsg("Si prefieres no esperar, llámanos o escríbenos al " + TELEFONO + ".", "bot");
   };
 
   const askName = async () => {
@@ -841,7 +907,8 @@
       lead.nombre = v; setInput(false); askPhone();
     } else if (step === "phone") {
       if (!isPhone(v)) { botSay("Ese teléfono no parece válido. Escríbelo con 9 dígitos, por favor."); return; }
-      lead.telefono = v; setInput(false); askFecha();
+      lead.telefono = v; setInput(false);
+      if (soloLeadActivo) cierreSoloLead(); else askFecha();
     } else if (step === "g-tel") {
       if (!isPhone(v)) { botSay("Ese teléfono no parece válido. Escríbelo con 9 dígitos, por favor."); return; }
       gestion.telefono = v; setInput(false); buscaCita();
@@ -959,15 +1026,10 @@
       });
       return;
     }
-    start();
-    /* Si vienen de una tarjeta de servicio, saltamos la elección de categoría. */
-    if (servicio && step === "work") {
-      setTimeout(() => {
-        if (step !== "work") return;
-        addMsg(servicio, "user");
-        pickWork(servicio);
-      }, 900);
-    }
+    /* Si vienen de una tarjeta de servicio, saltamos la elección de categoría
+       (start la resuelve cuando ya ha llegado el catálogo). */
+    if (!started) { start(servicio); return; }
+    if (servicio) eligeDesdeTarjeta(servicio);
   };
   const close = () => {
     panel.classList.remove("open");
