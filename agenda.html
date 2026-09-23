@@ -146,6 +146,9 @@ button{font-family:inherit}
 .act.repro{grid-column:1/3}
 .act.repro:hover{background:rgba(110,193,228,.14);border-color:var(--primary);color:#a9dcf2}
 .act:disabled{opacity:.4;cursor:default;transform:none}
+.act.resena{display:block;width:100%;margin-top:14px;text-align:center;text-decoration:none;font-family:inherit}
+.act.resena:not(:disabled):hover{background:rgba(16,185,129,.16);border-color:var(--confirmada);color:#6ee7b7}
+.resena-aviso{font-size:.76rem;color:var(--muted);margin-top:6px}
 .repro-box{margin-top:18px;border-top:1px solid var(--border);padding-top:18px}
 .repro-box .rt{font-size:.82rem;color:var(--muted);margin-bottom:10px}
 .rchips{display:flex;flex-wrap:wrap;gap:8px}
@@ -785,6 +788,7 @@ function openPanel(c){
     '<div class="field"><label>Teléfono</label><div><a href="tel:'+esc(c.cliente_telefono||'')+'">'+esc(c.cliente_telefono||'—')+'</a></div></div>'+
     (ORIGENES[c.origen]?'<div class="field"><label>Origen</label><div>'+ORIGENES[c.origen]+'</div></div>':'')+
     (c.resena_enviada?'<div class="field"><label>Reseña GMB</label><div>✓ Enviada</div></div>':'')+
+    (c.estado==='completada'?'<div id="resenaCita"></div>':'')+
     '<div class="notas-box">'+
       '<label>Observaciones</label>'+
       '<textarea id="notasTa" maxlength="2000" oninput="updateNotasCount()" placeholder="Notas internas de la cita: fórmula de color, tiempos, avisos…">'+esc(c.notas||'')+'</textarea>'+
@@ -802,6 +806,7 @@ function openPanel(c){
     '</div>'+
     '<div id="reproBox"></div>';
   updateNotasCount();
+  if(c.estado==='completada') pintarResena('resenaCita', c.cliente_nombre, c.cliente_telefono);
   document.getElementById('scrim').classList.add('open');
   document.getElementById('panel').classList.add('open');
 }
@@ -833,6 +838,60 @@ function pedirCancelar(){
 }
 // El paso (confirmar / elegir hueco) va al final del panel: lo traemos a la vista.
 function verPaso(){ document.getElementById('reproBox').scrollIntoView({block:'nearest', behavior:'smooth'}); }
+
+// ===== RESEÑA (plantilla A) =====
+// Demo: solo previsualiza el copy (ni wa.me ni teléfono). Salón: abre WhatsApp
+// del gerente con el texto puesto; lo envía él.
+var PLANTILLA_RESENA='¡Hola {nombre}! 😊 Somos {salon}. Esperamos que te haya encantado el resultado. Si tienes 1 minuto, nos ayudarías muchísimo dejándonos tu opinión aquí 👉 {link} ¡Gracias por confiar en nosotras! 💛';
+async function configResena(){
+  if(!configCache){ var r=await pelu({action:'config-get'}); if(r && r.ok) configCache=r.config||{}; }
+  return configCache||{};
+}
+function copyResena(nombre, cfg){
+  var v={ nombre:String(nombre||'').trim().split(/\s+/)[0], salon:cfg.salon_nombre.trim(), link:cfg.gmb_url.trim() };
+  return PLANTILLA_RESENA.replace(/\{(nombre|salon|link)\}/g, function(_, k){ return v[k]; });
+}
+async function pintarResena(hostId, nombre, telefono){
+  var host=document.getElementById(hostId); if(!host) return;
+  var cfg=await configResena();
+  if(!host.isConnected) return; // el panel/ficha cambió mientras cargaba
+  var label=MODO_DEMO ? 'Ver copy de reseña' : 'Pedir reseña';
+  var tel=String(telefono||'').replace(/\D/g,'').slice(-9);
+  var falta = !(cfg.gmb_url||'').trim() ? 'Configura el enlace de reseñas en Perfil'
+    : !(cfg.salon_nombre||'').trim() ? 'Configura el nombre del salón en Perfil'
+    : (!MODO_DEMO && tel.length<9) ? 'El teléfono del cliente no es válido' : '';
+  if(falta){
+    host.innerHTML='<button class="act resena" disabled title="'+esc(falta)+'">⭐ '+label+'</button><div class="resena-aviso">'+esc(falta)+'</div>';
+    return;
+  }
+  var txt=copyResena(nombre, cfg);
+  if(MODO_DEMO){
+    host.innerHTML='<button class="act resena">⭐ '+label+'</button>';
+    host.firstChild.onclick=function(){ verCopyResena(txt); };
+    return;
+  }
+  host.innerHTML='<a class="act resena" target="_blank" rel="noopener" href="https://wa.me/34'+tel+'?text='+encodeURIComponent(txt)+'">⭐ '+label+'</a>';
+}
+function verCopyResena(txt){
+  document.getElementById('modalHost').innerHTML=
+    '<div class="modal-scrim" onclick="closeModalBg(event)">'+
+      '<div class="modal">'+
+        '<div class="modal-head"><h3>Copy de reseña</h3>'+
+          '<button class="panel-close" onclick="closeModal()" aria-label="Cerrar">×</button></div>'+
+        '<div class="modal-body">'+
+          '<textarea class="inp ta" id="rs-txt" readonly rows="7">'+esc(txt)+'</textarea>'+
+          '<button class="btn-prim wide" onclick="copiarResena()">Copiar al portapapeles</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+function copiarResena(){
+  var ta=document.getElementById('rs-txt'); if(!ta) return;
+  var ok=function(){ toast('Copiado al portapapeles','ok'); };
+  var viejo=function(){ ta.select(); try{ document.execCommand('copy'); ok(); }catch(e){ toast('Selecciona el texto y cópialo','err'); } };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(ok, viejo);
+  else viejo();
+}
 
 // ===== OBSERVACIONES =====
 function updateNotasCount(){
@@ -1244,6 +1303,7 @@ function renderFicha(p, hist){
       (hasNotas(h)?'<div class="hist-nota">📝 '+esc(h.notas)+'</div>':'')+
     '</div>';
   }).join('') : '<div class="pac-empty">Sin citas registradas</div>';
+  var conCompletada=hist.some(function(h){ return h.estado==='completada'; });
   document.getElementById('view-clientes').innerHTML=
     '<div class="pane">'+
       '<button class="back" onclick="loadClientes()">‹ Volver a clientes</button>'+
@@ -1256,9 +1316,11 @@ function renderFicha(p, hist){
         '<div class="saveline"><span class="upd">Alta: '+fmtShort(p.created_at)+'</span>'+
           '<button class="btn-prim" id="fi-save" onclick="saveFicha()">Guardar ficha</button></div>'+
       '</div>'+
+      (conCompletada?'<div id="resenaFicha"></div>':'')+
       '<h3 class="hist-h">Historial de citas</h3>'+
       '<div class="hist">'+histHTML+'</div>'+
     '</div>';
+  if(conCompletada) pintarResena('resenaFicha', p.nombre, p.telefono);
 }
 async function saveFicha(){
   if(!fichaActual) return;
