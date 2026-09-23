@@ -54,6 +54,15 @@
     "¡Te esperamos! ¿Necesitas cambiar o cancelar? Vuelve a hablar conmigo y " +
     "dime tu teléfono, y te la gestiono al momento.";
 
+  /* Modo demo público (?demo=1): servicios y huecos reales, pero NADA se
+     escribe. No se pide teléfono, no se llama a 'reservar', no sale ningún
+     lead a leads_web ni ningún Telegram, y no hay autogestión (cancelar o
+     mover citas ajenas). Sin el flag, todo sigue igual. */
+  const DEMO = new URLSearchParams(location.search).get("demo") === "1";
+  const CIERRE_DEMO =
+    "✅ ¡Así de fácil! En tu negocio, aquí se guardaría la cita y te llegaría el " +
+    "aviso al móvil al instante. Esto es una demo, no se ha guardado ninguna cita.";
+
   /* El menú sale del CATÁLOGO (servicios-list): los servicios activos, en su
      orden, con nombre, duración y precio. Lo que el salón cambia en el panel
      se ve aquí.
@@ -280,7 +289,7 @@
     modo = "reserva";
     step = "work";
     setInput(false);
-    setQuick(SERVICIOS.concat([GESTION]), (w) => {
+    setQuick(DEMO ? SERVICIOS : SERVICIOS.concat([GESTION]), (w) => {
       addMsg(w.label, "user");
       if (w.gestion) askGestionTel(); else pickWork(w.label);
     });
@@ -349,7 +358,8 @@
     step = "fecha";
     clearQuick();
     if (!vista) { const t = hoy(); vista = new Date(t.getFullYear(), t.getMonth(), 1); }
-    await botSay("Ya te tengo apuntado. ¿Qué día te viene bien? Abrimos de lunes a viernes.", () => {
+    await botSay((DEMO ? "Gracias, " + lead.nombre.split(" ")[0] + "." : "Ya te tengo apuntado.") +
+      " ¿Qué día te viene bien? Abrimos de lunes a viernes.", () => {
       setInput(false, "Elige un día en el calendario");
       pintaCalendario();
     });
@@ -561,7 +571,20 @@
     lead.citaAt = iso;
     addMsg(lead.hora, "user");
     quitaWidget();
-    reservar(fecha);
+    if (DEMO) cierreDemo(); else reservar(fecha);
+  };
+
+  /* Demo: el resguardo de cómo quedaría, sin ninguna petición. */
+  const cierreDemo = () => {
+    step = "done";
+    setInput(false); clearQuick();
+    tarjetaCita("Así quedaría tu cita", filasCita({
+      nombre: lead.nombre,
+      servicio: lead.servicio,
+      fecha: lead.dia,
+      hora: lead.hora,
+    }));
+    setTimeout(() => addMsg(CIERRE_DEMO, "bot"), 700);
   };
 
   const CHECK_SVG =
@@ -683,6 +706,10 @@
   const cierreSinCita = async (conFranja) => {
     step = "done";
     setInput(false); clearQuick(); quitaWidget();
+    if (DEMO) {
+      addMsg("En tu negocio, aquí el salón recibiría tu petición al móvil para llamarte. Esto es una demo, no se ha guardado nada.", "bot");
+      return;
+    }
     const t = typing();
     if (!conFranja) { lead.dia = ""; lead.diaISO = ""; lead.hora = ""; }
     const ok = await enviarLead();
@@ -904,7 +931,8 @@
     input.value = "";
     if (step === "name") {
       if (v.length < 2) { botSay("¿Me dices tu nombre, por favor?"); return; }
-      lead.nombre = v; setInput(false); askPhone();
+      lead.nombre = v; setInput(false);
+      if (!DEMO) askPhone(); else if (soloLeadActivo) cierreSinCita(); else askFecha();
     } else if (step === "phone") {
       if (!isPhone(v)) { botSay("Ese teléfono no parece válido. Escríbelo con 9 dígitos, por favor."); return; }
       lead.telefono = v; setInput(false);
@@ -967,6 +995,7 @@
   };
 
   async function enviarLead() {
+    if (DEMO) return false;  // demo: ni leads_web ni Telegram, pase lo que pase
     if (enviado) return true;
     enviado = true;
 
@@ -1015,6 +1044,7 @@
        una cita invita justo a esto ("vuelve a hablar conmigo"), así que hay
        que dar salida en vez de dejar el campo bloqueado. */
     if (started && step === "done") {
+      if (DEMO) { botSay("¿Probamos otra?", () => menuInicial()); return; }
       botSay("¿Te ayudo con algo más?", () => {
         setQuick([
           { label: "Cambiar o cancelar mi cita", gestion: true },
@@ -1048,5 +1078,5 @@
 
   /* Hook para páginas que abren el chat sin el botón (cita.html, a pantalla
      completa): abrir y el nombre del salón. El widget de index.html no lo usa. */
-  window.Alexia = { open, salon: SALON };
+  window.Alexia = { open, salon: SALON, demo: DEMO };
 })();

@@ -31,6 +31,8 @@ body.cita .alexia-head{padding-top:max(16px, env(safe-area-inset-top))}
 body.cita .alexia-head b{font-family:var(--display);font-weight:600;font-size:1.18rem;letter-spacing:-.01em}
 body.cita .alexia-head__close{display:none}
 body.cita .cita-eyebrow{display:block;margin-bottom:2px;font-family:var(--body);font-size:.7rem;font-weight:600;letter-spacing:.06em;line-height:1.2;color:var(--rosa-dark)}
+body.cita .cita-demo{display:inline-block;margin:0 0 4px;padding:2px 8px;border-radius:999px;background:var(--rosa-chip);font-family:var(--body);font-size:.68rem;font-weight:600;line-height:1.4;color:var(--rosa-deep)}
+body.cita .cita-demo[hidden]{display:none}
 body.cita .alexia-note{padding-bottom:max(8px, env(safe-area-inset-bottom))}
 @media (min-width:700px){
   body.cita .alexia-panel{border-left:1px solid var(--line);border-right:1px solid var(--line);box-shadow:var(--sh-lg)}
@@ -52,6 +54,8 @@ body.cita .alexia-note{padding-bottom:max(8px, env(safe-area-inset-bottom))}
     <span class="alexia-head__av"><svg aria-hidden="true"><use href="#ic-scissors"/></svg></span>
     <div>
       <span class="cita-eyebrow">Asistente IA</span>
+      <!-- Solo con ?demo=1: negocio de muestra, no se guarda nada. -->
+      <span class="cita-demo" id="cita-demo" hidden>Demo · peluquería de ejemplo</span>
       <b id="cita-salon"></b>
       <small>Reserva tu cita</small>
     </div>
@@ -77,6 +81,7 @@ body.cita .alexia-note{padding-bottom:max(8px, env(safe-area-inset-bottom))}
   document.addEventListener("DOMContentLoaded", function () {
     if (!window.Alexia) return;
     document.getElementById("cita-salon").textContent = window.Alexia.salon;
+    if (window.Alexia.demo) document.getElementById("cita-demo").hidden = false;
     document.title = "Reserva tu cita · " + window.Alexia.salon;
     window.Alexia.open();
   });
