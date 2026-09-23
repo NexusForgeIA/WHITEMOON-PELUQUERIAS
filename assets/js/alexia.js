@@ -34,13 +34,17 @@
   const SUPABASE_URL = "https://mlaqtniujnvfxcvcourm.supabase.co";
   const SUPABASE_KEY = "sb_publishable_6no6BuOgiA_2nonTJntAuQ_DTqEgrcV";
   const NOTIFY_FN = SUPABASE_URL + "/functions/v1/peluquerias-notify";
-  const CITA_FN = SUPABASE_URL + "/functions/v1/peluquerias-cita";
   const LEADS_URL = SUPABASE_URL + "/rest/v1/leads_web";
   const ORIGEN = "demo-peluquerias";
   /* Tenant de la agenda: el token del salón (onboarding_clientes.token_cdn).
      La fábrica sustituye esta línea exacta al clonar; la demo es
      "demo-peluquerias". */
   const TENANT_TOKEN = "demo-peluquerias";
+  /* Demo → peluquerias-cita (siempre tenant demo). Salón clonado →
+     peluquerias-cita-mt, que resuelve el tenant por el token. Igual que agenda.html.
+     Va después de TENANT_TOKEN: es const y antes no existe. */
+  const CITA_FN = SUPABASE_URL + "/functions/v1/" +
+    (TENANT_TOKEN === "demo-peluquerias" ? "peluquerias-cita" : "peluquerias-cita-mt");
   const SECTOR = "Peluquería";
   const SALON = "Peluquería Aurora";
   const TELEFONO = "643 199 580";
