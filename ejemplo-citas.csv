@@ -1,0 +1,4 @@
+fecha,hora,nombre,telefono,servicio,duracion_min,estado,notas
+2026-10-05,10:00,Cliente Ejemplo Uno,600000001,Corte y peinado,45,agendada,
+2026-10-05,16:30,Cliente Ejemplo Dos,600000002,Color y tinte,90,confirmada,"Tono 7.1, sin amoniaco"
+2026-10-06,11:00,Cliente Ejemplo Tres,600000003,Barbería,,,
