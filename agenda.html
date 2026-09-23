@@ -1374,86 +1374,15 @@ async function loadServicios(){
     return;
   }
   serviciosCache=(res.servicios||[]).slice().sort(byOrden);
-  if(MODO_DEMO) renderServicios(); else renderEditorServicios();
+  renderEditorServicios();
 }
-function renderServicios(){
-  var rows=serviciosCache.map(function(t){
-    var pre=(t.precio_eur!=null?Number(t.precio_eur):0).toFixed(2);
-    var dur=(t.duracion_min!=null?t.duracion_min:30);
-    var upd=t.updated_at?('Modif. '+fmtShort(t.updated_at)):'—';
-    return '<div class="srv-row" id="srv-row-'+t.id+'" data-dur="'+dur+'" data-pre="'+pre+'" data-act="'+(t.activo?1:0)+'">'+
-      '<div class="srv-name">'+esc(t.nombre)+'</div>'+
-      '<div class="srv-fld"><label>Duración</label>'+
-        '<div class="price-grp"><input class="srv-inp" type="number" inputmode="numeric" step="5" id="srv-dur-'+t.id+'" value="'+dur+'" oninput="srvDirty(\''+t.id+'\')"><span class="srv-upd" style="flex:0;min-width:0">min</span></div>'+
-      '</div>'+
-      '<div class="srv-fld"><label>Precio</label>'+
-        '<div class="price-grp">'+
-          '<button class="step" onclick="srvStep(\''+t.id+'\',-5)" aria-label="Bajar 5€">−</button>'+
-          '<input class="srv-inp" type="number" inputmode="decimal" step="0.01" id="srv-pre-'+t.id+'" value="'+pre+'" oninput="srvDirty(\''+t.id+'\')">'+
-          '<button class="step" onclick="srvStep(\''+t.id+'\',5)" aria-label="Subir 5€">+</button>'+
-          '<span class="srv-upd" style="flex:0;min-width:0">€</span>'+
-        '</div>'+
-      '</div>'+
-      '<div class="srv-fld"><label>Activo</label>'+
-        '<label class="sw"><input type="checkbox" id="srv-act-'+t.id+'" '+(t.activo?'checked':'')+' onchange="srvDirty(\''+t.id+'\')"><span class="track"></span></label>'+
-      '</div>'+
-      '<span class="srv-upd">'+esc(upd)+'</span>'+
-      '<button class="srv-save" id="srv-save-'+t.id+'" onclick="srvSave(\''+t.id+'\')">Guardar</button>'+
-      '<div class="srv-err" id="srv-err-'+t.id+'"></div>'+
-    '</div>';
-  }).join('');
-  document.getElementById('view-servicios').innerHTML=
-    '<div class="pane">'+
-      '<h2 class="pane-h">Servicios y precios</h2>'+
-      '<div class="srv-table">'+(rows||'<div class="pac-empty">No hay servicios en el catálogo.</div>')+'</div>'+
-      '<div class="srv-note">El precio se aplica a las estadísticas desde ahora; las citas pasadas se valoran con el precio actual.</div>'+
-    '</div>';
-}
-function srvStep(id, delta){
-  var inp=document.getElementById('srv-pre-'+id); if(!inp) return;
-  var v=parseFloat(inp.value); if(isNaN(v)) v=0;
-  v=Math.max(0, v+delta);
-  inp.value=v.toFixed(2);
-  srvDirty(id);
-}
-function srvDirty(id){
-  var row=document.getElementById('srv-row-'+id); if(!row) return;
-  var dur=document.getElementById('srv-dur-'+id).value.trim();
-  var pre=parseFloat(document.getElementById('srv-pre-'+id).value);
-  var preStr=isNaN(pre)?'':pre.toFixed(2);
-  var act=document.getElementById('srv-act-'+id).checked?'1':'0';
-  var dirty=(dur!==row.dataset.dur)||(preStr!==row.dataset.pre)||(act!==row.dataset.act);
-  row.classList.toggle('dirty', dirty);
-  if(!dirty){ var er=document.getElementById('srv-err-'+id); if(er) er.textContent=''; }
-}
-async function srvSave(id){
-  var row=document.getElementById('srv-row-'+id); if(!row) return;
-  var err=document.getElementById('srv-err-'+id), btn=document.getElementById('srv-save-'+id);
-  err.textContent='';
-  var durRaw=document.getElementById('srv-dur-'+id).value.trim();
-  var preRaw=document.getElementById('srv-pre-'+id).value.trim();
-  var campos={
-    duracion_min: parseInt(durRaw,10),
-    precio_eur: Math.round(parseFloat(preRaw)*100)/100,
-    activo: document.getElementById('srv-act-'+id).checked
-  };
-  if(durRaw===''||isNaN(campos.duracion_min)){ err.textContent='Indica una duración válida.'; return; }
-  if(preRaw===''||isNaN(campos.precio_eur)){ err.textContent='Indica un precio válido.'; return; }
-  var prev=btn.textContent; btn.disabled=true; btn.textContent='Guardando…';
-  var res=await pelu({action:'servicio-set', id:id, campos:campos});
-  btn.disabled=false; btn.textContent=prev;
-  if(res && res.ok && !res._neterr){
-    toast('Servicio actualizado','ok');
-    loadServicios();
-  } else {
-    err.textContent=(res && (res.error||res.reason)) || 'No se pudo guardar el servicio';
-    toast('Revisa los datos del servicio','err');
-  }
-}
-
-// ===== EDITOR DE SERVICIOS (modo salón) =====
-// El dueño edita su catálogo: nombre, duración (decide los huecos), precio con
-// modo, activo/archivado y orden. Nada se borra: archivar es activo:false.
+// ===== EDITOR DE SERVICIOS =====
+// El dueño edita su catálogo: nombre, duración (decide los huecos), precio,
+// activo/archivado y alta. Nada se borra: archivar es activo:false.
+// Demo (peluquerias-cita) vs salón (-mt): la demo no tiene precio_modo ni
+// servicio-orden, servicio-crear va con campos sueltos y responde plano; el
+// salón usa {campos} y responde {servicio:{…}}.
+function servicioDe(res){ return (res && res.servicio) || res || {}; }
 var MODOS_PRECIO=[['fijo','Precio fijo'],['desde','Desde'],['consulta','Consultar'],['gratis','Gratis']];
 function conCifra(modo){ return modo==='fijo' || modo==='desde'; }
 function srvById(id){ return serviciosCache.filter(function(t){ return t.id===id; })[0]; }
@@ -1471,17 +1400,17 @@ function renderEditorServicios(){
     var pre=(t.precio_eur!=null?Number(t.precio_eur).toFixed(2):'');
     var estado=t.activo ? (t.updated_at?('Modif. '+fmtShort(t.updated_at)):'—') : 'Archivado';
     return '<div class="srv-row'+(t.activo?'':' archivado')+'" id="srv-row-'+id+'">'+
-      '<div class="price-grp">'+
+      (MODO_DEMO ? '' : '<div class="price-grp">'+
         '<button class="step" onclick="srvMover(\''+id+'\',-1)" aria-label="Subir"'+(i===0?' disabled':'')+'>↑</button>'+
         '<button class="step" onclick="srvMover(\''+id+'\',1)" aria-label="Bajar"'+(i===n-1?' disabled':'')+'>↓</button>'+
-      '</div>'+
+      '</div>')+
       '<div class="srv-fld srv-name"><label>Nombre</label>'+
         '<input class="inp" id="srv-nom-'+id+'" maxlength="80" value="'+esc(t.nombre)+'" oninput="srvDirtyEd(\''+id+'\')"></div>'+
       '<div class="srv-fld"><label>Duración</label>'+
         '<div class="price-grp"><input class="srv-inp" type="number" inputmode="numeric" min="15" max="240" step="5" id="srv-dur-'+id+'" value="'+t.duracion_min+'" oninput="srvDirtyEd(\''+id+'\')"><span class="srv-upd" style="flex:0;min-width:0">min</span></div></div>'+
       '<div class="srv-fld"><label>Precio</label>'+
         '<div class="price-grp">'+
-          '<select class="srv-inp srv-modo" id="srv-modo-'+id+'" onchange="srvModoEd(\''+id+'\')">'+modoOptions(modo)+'</select>'+
+          (MODO_DEMO ? '' : '<select class="srv-inp srv-modo" id="srv-modo-'+id+'" onchange="srvModoEd(\''+id+'\')">'+modoOptions(modo)+'</select>')+
           '<span class="price-grp" id="srv-cifra-'+id+'"'+(conCifra(modo)?'':' style="display:none"')+'>'+
             '<input class="srv-inp" type="number" inputmode="decimal" min="0" max="9999" step="0.01" id="srv-pre-'+id+'" value="'+pre+'" oninput="srvDirtyEd(\''+id+'\')">'+
             '<span class="srv-upd" style="flex:0;min-width:0">€</span></span>'+
@@ -1497,7 +1426,8 @@ function renderEditorServicios(){
     '<div class="pane">'+
       '<div class="pane-top"><h2 class="pane-h">Servicios y precios</h2>'+
         '<button class="btn-prim" onclick="openNuevoServicio()">+ Añadir servicio</button></div>'+
-      '<div class="srv-note" style="margin:0 0 16px"><b>La duración decide los huecos</b> que ofrece el asistente al reservar. Archivar no borra nada: puedes reactivar el servicio cuando quieras.</div>'+
+      '<div class="srv-note" style="margin:0 0 16px"><b>La duración decide los huecos</b> que ofrece el asistente al reservar. <b>Desactivar no borra nada</b>: el servicio deja de salir al añadir citas y puedes reactivarlo cuando quieras. '+
+        'El asistente de la web tiene su propia lista de servicios: de aquí solo toma la duración, buscando el servicio por su nombre.</div>'+
       '<div class="srv-table">'+(rows||'<div class="pac-empty">Todavía no hay servicios. Añade el primero.</div>')+'</div>'+
     '</div>';
 }
@@ -1509,10 +1439,10 @@ function srvCamposEd(id){
   if(nom!==t.nombre) c.nombre=nom;
   var dur=val('srv-dur-'+id).trim();
   if(dur!==String(t.duracion_min)) c.duracion_min=dur;
-  var modo=val('srv-modo-'+id), pre=val('srv-pre-'+id).trim();
+  var modo=MODO_DEMO ? 'fijo' : val('srv-modo-'+id), pre=val('srv-pre-'+id).trim();
   var cifraCambia=conCifra(modo) && (pre==='' || t.precio_eur==null || Number(pre)!==Number(t.precio_eur));
   if(modo!==(t.precio_modo||'fijo') || cifraCambia){
-    c.precio_modo=modo;
+    if(!MODO_DEMO) c.precio_modo=modo;
     if(conCifra(modo)) c.precio_eur=pre;
   }
   var act=document.getElementById('srv-act-'+id).checked;
@@ -1539,7 +1469,7 @@ function srvValidar(c){
   }
   if('precio_eur' in c){
     var p=Number(c.precio_eur);
-    if(c.precio_eur==='' || isNaN(p) || p<0 || p>9999) return 'Con precio fijo o "desde" indica una cifra entre 0 y 9999.';
+    if(c.precio_eur==='' || isNaN(p) || p<0 || p>9999) return MODO_DEMO ? 'El precio debe ser una cifra entre 0 y 9999.' : 'Con precio fijo o "desde" indica una cifra entre 0 y 9999.';
     c.precio_eur=Math.round(p*100)/100;
   }
   return '';
@@ -1554,8 +1484,8 @@ async function srvGuardarEd(id){
   var res=await pelu({action:'servicio-set', id:id, campos:c});
   btn.disabled=false; btn.textContent=prev;
   if(res && res._auth) return;
-  if(res && res.ok && !res._neterr){ toast('Servicio guardado','ok'); loadServicios(); }
-  else { err.textContent=srvMsg(res,'No se pudo guardar el servicio'); toast('Revisa los datos del servicio','err'); }
+  if(res && res.ok && !res._neterr){ toast('Guardado: '+(servicioDe(res).nombre||'servicio'),'ok'); loadServicios(); }
+  else { err.textContent=srvMsg(res,'No se pudo guardar el servicio'); toast(srvMsg(res,'Revisa los datos del servicio'),'err'); }
 }
 // La función espera la lista COMPLETA de ids en el orden nuevo.
 async function srvMover(id, delta){
@@ -1578,8 +1508,9 @@ function openNuevoServicio(){
         '<div class="modal-body">'+
           field('Nombre','<input class="inp" id="ns-nombre" maxlength="80" placeholder="Corte y peinado">')+
           field('Duración (min)','<input class="inp" id="ns-dur" type="number" inputmode="numeric" min="15" max="240" step="5" value="45">')+
-          field('Precio','<select class="inp" id="ns-modo" style="color-scheme:dark" onchange="nsModo()">'+modoOptions('fijo')+'</select>')+
+          (MODO_DEMO ? '' : field('Precio','<select class="inp" id="ns-modo" style="color-scheme:dark" onchange="nsModo()">'+modoOptions('fijo')+'</select>'))+
           '<div id="ns-cifra">'+field('Importe (€)','<input class="inp" id="ns-pre" type="number" inputmode="decimal" min="0" max="9999" step="0.01">')+'</div>'+
+          field('Activo','<label class="sw"><input type="checkbox" id="ns-act" checked><span class="track"></span></label>')+
           '<div class="form-err" id="ns-err"></div>'+
           '<button class="btn-prim wide" id="ns-save" onclick="crearServicio()">Crear servicio</button>'+
         '</div>'+
@@ -1590,16 +1521,19 @@ function openNuevoServicio(){
 function nsModo(){ document.getElementById('ns-cifra').style.display=conCifra(val('ns-modo'))?'':'none'; }
 async function crearServicio(){
   var err=document.getElementById('ns-err'); err.textContent='';
-  var modo=val('ns-modo');
-  var c={nombre:val('ns-nombre').trim(), duracion_min:val('ns-dur').trim(), precio_modo:modo};
+  var modo=MODO_DEMO ? 'fijo' : val('ns-modo');
+  var c={nombre:val('ns-nombre').trim(), duracion_min:val('ns-dur').trim()};
+  if(!MODO_DEMO) c.precio_modo=modo;
   if(conCifra(modo)) c.precio_eur=val('ns-pre').trim();
   var e=srvValidar(c); if(e){ err.textContent=e; return; }
+  c.activo=document.getElementById('ns-act').checked;
   var btn=document.getElementById('ns-save'); var prev=btn.textContent; btn.disabled=true; btn.textContent='Creando…';
-  var res=await pelu({action:'servicio-crear', campos:c});
+  // Demo: campos sueltos en el cuerpo. Salón: dentro de {campos}.
+  var res=await pelu(MODO_DEMO ? Object.assign({action:'servicio-crear'}, c) : {action:'servicio-crear', campos:c});
   btn.disabled=false; btn.textContent=prev;
   if(res && res._auth){ closeModal(); return; }
-  if(res && res.ok && !res._neterr){ closeModal(); toast('Servicio creado','ok'); loadServicios(); }
-  else err.textContent=srvMsg(res,'No se pudo crear el servicio');
+  if(res && res.ok && !res._neterr){ closeModal(); toast('Servicio creado: '+(servicioDe(res).nombre||c.nombre),'ok'); loadServicios(); }
+  else { err.textContent=srvMsg(res,'No se pudo crear el servicio'); toast(srvMsg(res,'No se pudo crear el servicio'),'err'); }
 }
 
 // ===== ESTADÍSTICAS =====
