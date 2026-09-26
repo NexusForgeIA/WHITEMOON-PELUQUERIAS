@@ -415,6 +415,11 @@ section[id]{scroll-margin-top:calc(var(--nav-h) + 12px)}
 .alexia-foot button:disabled{opacity:.45;cursor:default}
 .alexia-foot button svg{width:19px;height:19px;color:#fff}
 .alexia-note{text-align:center;padding:8px 14px;font-size:.68rem;color:var(--muted);background:var(--bg-az);border-top:1px solid var(--line)}
+.alexia-note a{color:var(--azul-dark);text-decoration:underline;text-underline-offset:2px}
+/* "Reservar con botones": salida siempre visible del modo IA */
+.alexia-modo{align-self:center;margin:0 16px 10px;padding:7px 14px;border:1px solid var(--line-2);border-radius:100px;background:var(--white);font-family:var(--body);font-size:.8rem;font-weight:500;color:var(--azul-dark);cursor:pointer;transition:border-color .2s,color .2s}
+.alexia-modo:hover{border-color:var(--azul-dark);color:var(--azul-deep)}
+.alexia-modo[hidden]{display:none}
 
 /* ---------- Agenda del chat: calendario y horas ----------
    Contraste medido: día #2a2a33/blanco 14.44:1 · hover #26709c/#e8f4fb 4.56:1
