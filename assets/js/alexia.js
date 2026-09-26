@@ -1013,7 +1013,18 @@
       addMsg(res.text, "bot");
       iaHist.push({ role: "assistant", content: res.text });
     }
-    if (res && res.resultado) pintaResultado(res.resultado);
+    if (res && res.resultado) {
+      pintaResultado(res.resultado);
+      /* La cita ya está hecha pero la respuesta falló: no se ofrece reservar
+         otra. Campo desactivado; "Reservar con botones" sigue a la vista. */
+      if (res.fallback || !res.text) {
+        const r = res.resultado;
+        addMsg(r.simulada ? CIERRE_DEMO
+          : "Listo, tu cita está " + (r.tipo === "cancelacion" ? "cancelada" : "hecha") +
+            ". Si necesitas algo más, llámanos al " + TELEFONO + ".", "bot");
+        return;
+      }
+    }
     if (!res || res.fallback || res.modo_botones || !res.text) {
       pasaABotones(res && res.modo_botones && res.text ? "Te lo pongo más fácil con botones. ¿Qué servicio quieres reservar?" : "");
       return;
