@@ -45,6 +45,10 @@
      Va después de TENANT_TOKEN: es const y antes no existe. */
   const CITA_FN = SUPABASE_URL + "/functions/v1/" +
     (TENANT_TOKEN === "demo-peluquerias" ? "peluquerias-cita" : "peluquerias-cita-mt");
+  /* Modo IA (texto libre): solo en la demo, que es el único tenant que atiende
+     peluquerias-agente. Un salón clonado sigue con los botones de siempre. */
+  const AGENTE_FN = SUPABASE_URL + "/functions/v1/peluquerias-agente";
+  const IA_DISPONIBLE = TENANT_TOKEN === "demo-peluquerias";
   const SECTOR = "Peluquería";
   const SALON = "Peluquería Aurora";
   const TELEFONO = "643 199 580";
@@ -159,6 +163,23 @@
   let started = false;
   let vista = null;        // mes que pinta el calendario
   let enviado = false;     // el lead solo se manda una vez
+
+  /* Modo IA: el cliente escribe y peluquerias-agente contesta. Si el agente
+     cae (fallback) o corta (modo_botones), se pasa a los botones sin borrar la
+     conversación. El historial viaja entero en cada petición (máx. 12). */
+  let modoIA = false;
+  const iaHist = [];
+  /* Sin crypto.randomUUID (navegador antiguo o página sin HTTPS) no hay modo
+     IA: el chat arranca directamente con los botones. */
+  const SESION_IA = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID() : "";
+  /* "Reservar con botones": siempre a la vista mientras se habla con la IA. */
+  const btnBotones = document.createElement("button");
+  btnBotones.type = "button";
+  btnBotones.className = "alexia-modo";
+  btnBotones.textContent = "Reservar con botones";
+  btnBotones.hidden = true;
+  form.parentNode.insertBefore(btnBotones, form);
 
   /* ---------- helpers UI ---------- */
   const scroll = () => { body.scrollTop = body.scrollHeight; };
@@ -286,6 +307,9 @@
       await botSay("Hola 👋 Soy el asistente de Peluquería Aurora.");
       soloLead(); return;
     }
+    /* Demo: se abre en modo IA. Desde una tarjeta el servicio ya está
+       elegido, así que se sigue con los botones como siempre. */
+    if (IA_DISPONIBLE && SESION_IA && !desdeTarjeta) { entraIA(); return; }
     await botSay("Hola 👋 Soy el asistente de Peluquería Aurora. ¿Qué servicio quieres reservar?", () => menuInicial());
     if (desdeTarjeta) eligeDesdeTarjeta(desdeTarjeta);
   };
@@ -303,6 +327,7 @@
   /* Si el servicio de la tarjeta ya no está activo, se queda el menú normal. */
   const eligeDesdeTarjeta = (etiqueta) => {
     const w = buscaServicio(etiqueta);
+    if (w && modoIA) salirIA();  // tarjeta con el chat en modo IA: botones
     if (!w || step !== "work") return;
     addMsg(w.label, "user");
     pickWork(w.label);
@@ -923,6 +948,90 @@
     if (texto) addMsg(texto, "bot");
   };
 
+  /* ====================================================================
+     MODO IA (solo demo)
+     El texto va a peluquerias-agente con el historial. Las respuestas se
+     pintan con addMsg (textContent). {fallback} o {modo_botones} -> botones,
+     conservando lo ya hablado. Si llega `resultado`, la tarjeta de siempre.
+     ==================================================================== */
+  const entraIA = async () => {
+    modoIA = true;
+    step = "ia";
+    clearQuick();
+    btnBotones.hidden = false;
+    await botSay("Hola 👋 Soy el asistente de " + SALON + ". Cuéntame qué necesitas, por ejemplo «corte y peinado el jueves por la tarde».",
+      () => setInput(true, "Escribe tu mensaje…"));
+  };
+
+  /* Sale del modo IA; la conversación se queda en pantalla. */
+  const salirIA = () => {
+    modoIA = false;
+    btnBotones.hidden = true;
+    step = "work";
+  };
+  const pasaABotones = async (texto) => {
+    salirIA();
+    setInput(false); clearQuick();
+    await botSay(texto || "Sigamos con los botones. ¿Qué servicio quieres reservar?", () => menuInicial());
+  };
+  btnBotones.addEventListener("click", () => {
+    if (!modoIA) return;
+    addMsg("Reservar con botones", "user");
+    pasaABotones("Perfecto. ¿Qué servicio quieres reservar?");
+  });
+
+  /* Reserva, cambio o cancelación ya hechos (o simulados en la demo). La
+     conversación sigue abierta: el agente suele cerrar con "¿algo más?". */
+  const pintaResultado = (r) => {
+    if (r.tipo === "cancelacion") {
+      tarjetaCita("Cita cancelada", [["Servicio", r.servicio], ["Fecha", r.fecha], ["Hora", r.hora], ["Estado", "Cancelada"]]);
+      return;
+    }
+    const titulo = r.simulada ? "Así quedaría tu cita" : r.tipo === "cambio" ? "¡Cita cambiada!" : "¡Cita confirmada!";
+    tarjetaCita(titulo, filasCita({ nombre: r.nombre, telefono: r.telefono, servicio: r.servicio, fecha: r.fecha, hora: r.hora }));
+  };
+
+  const hablaIA = async (texto) => {
+    iaHist.push({ role: "user", content: texto });
+    setInput(false);
+    const t = typing();
+    let res = null;
+    try {
+      const r = await fetch(AGENTE_FN, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: SESION_IA, demo: DEMO, messages: iaHist.slice(-12) }),
+      });
+      res = await r.json();
+    } catch (e) {
+      console.warn("[alexia] peluquerias-agente sin red:", e);
+    }
+    t.remove();
+    if (!modoIA) return;  // mientras tanto pulsaron "Reservar con botones"
+
+    if (res && res.text) {
+      addMsg(res.text, "bot");
+      iaHist.push({ role: "assistant", content: res.text });
+    }
+    if (res && res.resultado) {
+      pintaResultado(res.resultado);
+      /* La cita ya está hecha pero la respuesta falló: no se ofrece reservar
+         otra. Campo desactivado; "Reservar con botones" sigue a la vista. */
+      if (res.fallback || !res.text) {
+        const r = res.resultado;
+        addMsg(r.simulada ? CIERRE_DEMO
+          : "Listo, tu cita está " + (r.tipo === "cancelacion" ? "cancelada" : "hecha") +
+            ". Si necesitas algo más, llámanos al " + TELEFONO + ".", "bot");
+        return;
+      }
+    }
+    if (!res || res.fallback || res.modo_botones || !res.text) {
+      pasaABotones(res && res.modo_botones && res.text ? "Te lo pongo más fácil con botones. ¿Qué servicio quieres reservar?" : "");
+      return;
+    }
+    setInput(true, "Escribe tu mensaje…");
+  };
+
   /* ---------- entrada de texto ---------- */
   /* Guard: mínimo 9 dígitos reales (admite prefijo +34 / 0034 y separadores). */
   const isPhone = (v) => {
@@ -934,6 +1043,7 @@
     if (!v) return;
     addMsg(v, "user");
     input.value = "";
+    if (step === "ia") { hablaIA(v.slice(0, 1000)); return; }
     if (step === "name") {
       if (v.length < 2) { botSay("¿Me dices tu nombre, por favor?"); return; }
       lead.nombre = v; setInput(false);
