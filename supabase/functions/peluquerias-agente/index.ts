@@ -9,7 +9,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Salida:   { text, fuera_de_ambito?, modo_botones?, resultado?, demo }
 //           { fallback:true }      -> error / timeout: el cliente pasa a botones
 //           { modo_botones:true }  -> bloqueo: 15 msg/sesión, 2 fuera de ámbito
-//                                     seguidos o 60 msg/hora por IP
+//                                     seguidos, 60 msg/hora por IP o 1500
+//                                     msg/24 h en total (tope global)
 //
 // Barreras en SERVIDOR (no solo en el prompt):
 //  - reservar / cancelar / reprogramar solo se ejecutan si el último mensaje
@@ -37,6 +38,7 @@ const T_LLAMADA_MS = 6000;
 const T_TOTAL_MS = 15000;
 const MAX_MSG_SESION = 15;
 const MAX_MSG_IP_HORA = 60;
+const MAX_MSG_GLOBAL_24H = 1500;
 const MAX_LARGO_MSG = 1000;
 
 const SALON = 'Peluquería Aurora';
@@ -90,6 +92,7 @@ type Ctx = {
   deadline: number;
   cat?: any[];
   escrito: boolean;
+  intentoEscritura: boolean;
   resultado?: Record<string, unknown>;
 };
 
@@ -114,10 +117,11 @@ function accionConfirmada(ctx: Ctx): string | null {
   if (r.includes('la cambio')) return 'reprogramar_cita';
   return null;
 }
-// Tras un "sí" a un resumen, un texto que da la escritura por hecha sin que
-// haya ocurrido no se envía (fallback). Solo en ese turno: en gestión es normal
-// decir "tienes una cita reservada el lunes".
-const DICE_HECHO = /\b(reservad[ao]|confirmad[ao]|cancelad[ao]|cambiad[ao]|anotad[ao])\b/;
+// Tras un "sí" a un resumen, o en un turno en que se intentó una escritura, un
+// texto que la da por hecha sin que haya ocurrido no se envía (fallback). Solo
+// en esos turnos: en gestión es normal decir "tienes una cita reservada el lunes".
+const DICE_HECHO = /\b(reservad[ao]|confirmad[ao]|cancelad[ao]|cambiad[ao]|anotad[ao]|apuntad[ao])\b/;
+const ESCRITURAS = new Set(['reservar', 'cancelar_cita', 'reprogramar_cita']);
 
 const SIN_CONFIRMAR = {
   ok: false,
@@ -269,6 +273,7 @@ const TOOLS = [
 ];
 
 async function ejecutar(ctx: Ctx, name: string, input: any): Promise<unknown> {
+  if (ESCRITURAS.has(name)) ctx.intentoEscritura = true;
   if (name === 'listar_servicios') {
     const cat = await catalogo(ctx);
     if (!cat) return { ok: false, error: 'CATALOGO_NO_DISPONIBLE' };
@@ -410,6 +415,7 @@ function construirSystem(demo: boolean): string {
     '1. Servicio (si no está claro, usa listar_servicios). 2. Día y ver_huecos. 3. Hora de horas_libres. 4. Nombre. 5. Teléfono de 9 dígitos. Al pedir nombre o teléfono, recuerda que solo se usan para gestionar la cita.',
     '6. Con todo, resume EXACTAMENTE así y espera: "Te resumo: {servicio}, el {día} a las {HH:MM}, a nombre de {nombre}, teléfono {teléfono}. ¿Te la reservo?"',
     '7. Solo si el cliente responde que sí, llama a reservar. Si cambia algo, vuelve a resumir. Di que está hecha solo si reservar devuelve ok.',
+    '- Nunca digas "te lo apunto", "te la reservo" ni "anotado" antes de que reservar devuelva ok (la única excepción es la pregunta final del resumen, "¿Te la reservo?"); al elegir hora di solo "Vale, a las HH:MM".',
     '',
     'CAMBIAR O CANCELAR',
     '- Pide el teléfono y usa buscar_cita. Después pide el nombre de la reserva (tú no lo sabes ni lo sugieres: es la comprobación de identidad).',
@@ -459,14 +465,19 @@ function construirConvo(messages: any[]): any[] {
 // ---------- bloqueo y metering ----------
 async function bloqueo(sessionId: string, ipHash: string): Promise<{ motivo: string | null; previos: any[] }> {
   const haceUnaHora = new Date(Date.now() - 3600_000).toISOString();
-  const [rs, ri] = await Promise.all([
+  const haceUnDia = new Date(Date.now() - 86400_000).toISOString();
+  const [rs, ri, rg] = await Promise.all([
     fetch(`${USAGE_URL}?session_id=eq.${encodeURIComponent(sessionId)}&select=fuera_de_ambito&order=created_at.desc&limit=${MAX_MSG_SESION}`, { headers: REST_HEADERS, signal: AbortSignal.timeout(3000) }),
     fetch(`${USAGE_URL}?ip_hash=eq.${ipHash}&created_at=gte.${encodeURIComponent(haceUnaHora)}&select=id&limit=${MAX_MSG_IP_HORA}`, { headers: REST_HEADERS, signal: AbortSignal.timeout(3000) }),
+    // Total de las últimas 24 h, todas las sesiones: el conteo va en Content-Range ("0-0/N").
+    fetch(`${USAGE_URL}?created_at=gte.${encodeURIComponent(haceUnDia)}&select=id&limit=1`, { headers: { ...REST_HEADERS, 'Prefer': 'count=exact' }, signal: AbortSignal.timeout(3000) }),
   ]);
-  if (!rs.ok || !ri.ok) throw new Error(`metering ${rs.status}/${ri.status}`);
+  if (!rs.ok || !ri.ok || !rg.ok) throw new Error(`metering ${rs.status}/${ri.status}/${rg.status}`);
   const previos = await rs.json();
   const ip = await ri.json();
-  if (!Array.isArray(previos) || !Array.isArray(ip)) throw new Error('metering sin filas');
+  const total24h = parseInt((rg.headers.get('content-range') || '').split('/')[1] ?? '', 10);
+  if (!Array.isArray(previos) || !Array.isArray(ip) || isNaN(total24h)) throw new Error('metering sin filas');
+  if (total24h >= MAX_MSG_GLOBAL_24H) return { motivo: 'tope-global', previos };
   if (previos.length >= MAX_MSG_SESION) return { motivo: 'tope-sesion', previos };
   if (previos.length >= 2 && previos[0].fuera_de_ambito && previos[1].fuera_de_ambito) return { motivo: 'fuera-de-ambito', previos };
   if (ip.length >= MAX_MSG_IP_HORA) return { motivo: 'tope-ip', previos };
@@ -505,6 +516,8 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'el último mensaje debe ser del usuario' }, 400);
   }
 
+  // x-forwarded-for[0]: la pasarela de Supabase lo reescribe. Comprobado: un
+  // X-Forwarded-For falso (simple o con dos valores) deja el mismo ip_hash.
   const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'desconocida';
   const ipHash = await sha256(`peluquerias-agente|${ip}|${SERVICE_KEY}`);
 
@@ -534,6 +547,7 @@ Deno.serve(async (req: Request) => {
     resumenPrevio: penultimo && penultimo.role === 'assistant' ? String(penultimo.content ?? '').slice(0, MAX_LARGO_MSG) : '',
     deadline: Date.now() + T_TOTAL_MS,
     escrito: false,
+    intentoEscritura: false,
   };
   const uso = { input_tokens: 0, output_tokens: 0 };
   const cuantos = previos.length + 1;  // incluye este mensaje
@@ -569,7 +583,7 @@ Deno.serve(async (req: Request) => {
       texto = content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('').trim() || '¿Me lo repites, por favor?';
     }
     if (!texto && !fuera) throw new Error('sin respuesta tras ' + MAX_VUELTAS + ' vueltas');
-    if (forzada && texto && !ctx.resultado && DICE_HECHO.test(norm(texto))) throw new Error('da por hecha una escritura que no ha ocurrido');
+    if ((forzada || ctx.intentoEscritura) && texto && !ctx.resultado && DICE_HECHO.test(norm(texto))) throw new Error('da por hecha una escritura que no ha ocurrido');
   } catch (e) {
     console.warn('[peluquerias-agente] fallback:', String(e));
     fallback = true;
